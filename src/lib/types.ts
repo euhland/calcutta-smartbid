@@ -1,26 +1,31 @@
 import { z } from "zod";
 
 export const stageSchema = z.enum([
+  "roundOf64",
+  "roundOf32",
   "sweet16",
   "elite8",
   "finalFour",
-  "titleGame",
   "champion"
 ]);
 
 export type Stage = z.infer<typeof stageSchema>;
 export type Stoplight = "buy" | "caution" | "pass";
-export type SessionRole = "operator" | "viewer";
+export type SessionRole = "admin" | "viewer";
+export type AuthScope = "platform" | "session";
 export type StorageBackend = "local" | "supabase";
+export type DataSourceKind = "csv" | "api";
+export type SessionDataSourceKind = "builtin" | DataSourceKind;
+export type DataImportStatus = "success" | "failed";
 
 export interface PayoutRules {
+  roundOf64: number;
+  roundOf32: number;
   sweet16: number;
   elite8: number;
   finalFour: number;
-  titleGame: number;
   champion: number;
-  houseTakePct: number;
-  startingBankroll: number;
+  projectedPot: number;
 }
 
 export interface Syndicate {
@@ -31,6 +36,8 @@ export interface Syndicate {
   remainingBankroll: number;
   ownedTeamIds: string[];
   portfolioExpectedValue: number;
+  catalogEntryId?: string | null;
+  sessionOnly?: boolean;
 }
 
 export interface TeamProjection {
@@ -115,7 +122,6 @@ export interface SimulationSnapshot {
 export interface TeamMarketState {
   nominatedTeamId: string | null;
   currentBid: number;
-  likelyBidderIds: string[];
   soldTeamIds: string[];
   lastUpdatedAt: string;
 }
@@ -130,8 +136,81 @@ export interface PurchaseRecord {
 }
 
 export interface EventAccess {
-  operatorPasscode: string;
-  viewerPasscode: string;
+  sharedCodeConfigured: boolean;
+}
+
+export interface PlatformUser {
+  id: string;
+  name: string;
+  email: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccessMember {
+  id: string;
+  platformUserId?: string | null;
+  name: string;
+  email: string;
+  role: SessionRole;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface SyndicateCatalogEntry {
+  id: string;
+  name: string;
+  color: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CsvDataSourceConfig {
+  csvContent: string;
+  fileName: string | null;
+}
+
+export interface ApiDataSourceConfig {
+  url: string;
+  bearerToken: string;
+}
+
+export interface DataSource {
+  id: string;
+  name: string;
+  kind: DataSourceKind;
+  active: boolean;
+  config: CsvDataSourceConfig | ApiDataSourceConfig;
+  createdAt: string;
+  updatedAt: string;
+  lastTestedAt: string | null;
+}
+
+export interface SessionDataSourceRef {
+  key: string;
+  name: string;
+  kind: SessionDataSourceKind;
+}
+
+export interface DataImportRun {
+  id: string;
+  sessionId: string;
+  sourceKey: string;
+  sourceName: string;
+  status: DataImportStatus;
+  message: string;
+  createdAt: string;
+}
+
+export interface AuthenticatedMember {
+  scope: AuthScope;
+  sessionId: string | null;
+  memberId: string | null;
+  name: string;
+  email: string;
+  role: "admin" | SessionRole;
 }
 
 export interface AuctionSession {
@@ -147,10 +226,17 @@ export interface AuctionSession {
   projections: TeamProjection[];
   projectionOverrides: Record<string, ProjectionOverride>;
   projectionProvider: string;
+  activeDataSource: SessionDataSourceRef;
   finalFourPairings: [string, string][];
   liveState: TeamMarketState;
   purchases: PurchaseRecord[];
   simulationSnapshot: SimulationSnapshot | null;
+}
+
+export interface StoredAuctionSession extends AuctionSession {
+  sharedAccessCodeHash: string;
+  sharedAccessCodeLookup: string;
+  accessMembers: AccessMember[];
 }
 
 export interface RecommendationDriver {
@@ -170,7 +256,6 @@ export interface BidRecommendation {
   stoplight: Stoplight;
   ownershipPenalty: number;
   bankrollHeadroom: number;
-  bidderPressure: number;
   concentrationScore: number;
   drivers: RecommendationDriver[];
   rationale: string[];
@@ -195,31 +280,141 @@ export interface AuctionDashboard {
   storageBackend: StorageBackend;
 }
 
+export interface AdminSessionSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  projectionProvider: string;
+  activeDataSourceName: string;
+  purchaseCount: number;
+  syndicateCount: number;
+  overrideCount: number;
+  adminCount: number;
+  viewerCount: number;
+}
+
+export interface AdminCenterData {
+  sessions: AdminSessionSummary[];
+  platformUsers: PlatformUser[];
+  syndicateCatalog: SyndicateCatalogEntry[];
+  dataSources: DataSource[];
+}
+
+export interface SessionAccessAssignmentInput {
+  platformUserId: string;
+  role: SessionRole;
+  active?: boolean;
+}
+
+export interface SessionSyndicateInput {
+  name: string;
+  color?: string;
+}
+
+export interface SessionAdminConfig {
+  session: AuctionSession;
+  accessMembers: AccessMember[];
+  platformUsers: PlatformUser[];
+  syndicateCatalog: SyndicateCatalogEntry[];
+  dataSources: DataSource[];
+  importRuns: DataImportRun[];
+}
+
+export interface RemoteProjectionFeed {
+  provider: string;
+  teams: Array<{
+    id: string;
+    name: string;
+    shortName: string;
+    region: string;
+    seed: number;
+    rating: number;
+    offense: number;
+    defense: number;
+    tempo: number;
+  }>;
+}
+
 export const payoutRulesSchema = z.object({
+  roundOf64: z.number().nonnegative(),
+  roundOf32: z.number().nonnegative(),
   sweet16: z.number().nonnegative(),
   elite8: z.number().nonnegative(),
   finalFour: z.number().nonnegative(),
-  titleGame: z.number().nonnegative(),
   champion: z.number().nonnegative(),
-  houseTakePct: z.number().min(0).max(100),
-  startingBankroll: z.number().positive()
+  projectedPot: z.number().positive()
 });
+
+export const createPlatformUserSchema = z.object({
+  name: z.string().min(2).max(60),
+  email: z.string().email(),
+  active: z.boolean().default(true)
+});
+
+export const updatePlatformUserSchema = createPlatformUserSchema.partial();
+
+export const createSyndicateCatalogSchema = z.object({
+  name: z.string().min(2).max(40),
+  color: z.string().min(4).max(24).default("#0a7ea4"),
+  active: z.boolean().default(true)
+});
+
+export const updateSyndicateCatalogSchema = createSyndicateCatalogSchema.partial();
+
+export const createDataSourceSchema = z.discriminatedUnion("kind", [
+  z.object({
+    name: z.string().min(2).max(80),
+    kind: z.literal("csv"),
+    active: z.boolean().default(true),
+    csvContent: z.string().min(1),
+    fileName: z.string().nullable().optional()
+  }),
+  z.object({
+    name: z.string().min(2).max(80),
+    kind: z.literal("api"),
+    active: z.boolean().default(true),
+    url: z.string().url(),
+    bearerToken: z.string().optional().default("")
+  })
+]);
+
+export const updateDataSourceSchema = z
+  .object({
+    name: z.string().min(2).max(80).optional(),
+    active: z.boolean().optional(),
+    csvContent: z.string().min(1).optional(),
+    fileName: z.string().nullable().optional(),
+    url: z.string().url().optional(),
+    bearerToken: z.string().optional()
+  })
+  .refine(
+    (value) =>
+      Object.keys(value).length > 0,
+    "At least one field is required."
+  );
 
 export const createSessionSchema = z.object({
   name: z.string().min(3).max(80),
   focusSyndicateName: z.string().min(2).max(40),
-  syndicates: z
+  sharedAccessCode: z.string().min(4).max(64),
+  accessAssignments: z
     .array(
       z.object({
-        name: z.string().min(2).max(40),
-        color: z.string().optional()
+        platformUserId: z.string(),
+        role: z.enum(["admin", "viewer"])
       })
     )
-    .min(2)
-    .max(16),
+    .min(1)
+    .max(40),
+  catalogSyndicateIds: z.array(z.string()).max(16).default([]),
   payoutRules: payoutRulesSchema,
-  projectionProvider: z.enum(["mock", "remote"]).default("mock"),
+  dataSourceKey: z.string().default("builtin:mock"),
   simulationIterations: z.number().int().min(1000).max(50000).default(4000)
+});
+
+export const runSessionImportSchema = z.object({
+  sourceKey: z.string().optional()
 });
 
 export const importProjectionsSchema = z.object({
@@ -232,8 +427,7 @@ export const rebuildSimulationSchema = z.object({
 
 export const updateLiveStateSchema = z.object({
   nominatedTeamId: z.string().nullable().optional(),
-  currentBid: z.number().nonnegative().optional(),
-  likelyBidderIds: z.array(z.string()).max(8).optional()
+  currentBid: z.number().nonnegative().optional()
 });
 
 export const createPurchaseSchema = z.object({
@@ -243,10 +437,10 @@ export const createPurchaseSchema = z.object({
 });
 
 export const saveProjectionOverrideSchema = z.object({
-  rating: z.number().positive().optional(),
-  offense: z.number().positive().optional(),
-  defense: z.number().positive().optional(),
-  tempo: z.number().positive().optional()
+  rating: z.number().optional(),
+  offense: z.number().optional(),
+  defense: z.number().optional(),
+  tempo: z.number().optional()
 });
 
 export const teamQuadWinsSchema = z.object({
@@ -272,8 +466,37 @@ export const teamScoutingProfileSchema = z.object({
   offenseStyle: z.string().trim().min(2).max(80).optional(),
   defenseStyle: z.string().trim().min(2).max(80).optional()
 });
+export const loginSchema = z.object({
+  email: z.string().email(),
+  sharedCode: z.string().min(4).max(64)
+});
 
-export interface RemoteProjectionFeed {
-  provider: string;
-  teams: TeamProjection[];
-}
+export const updateSessionAccessSchema = z.object({
+  assignments: z
+    .array(
+      z.object({
+        platformUserId: z.string(),
+        role: z.enum(["admin", "viewer"]),
+        active: z.boolean().default(true)
+      })
+    )
+    .min(1)
+    .max(40)
+});
+
+export const updateSessionSharedCodeSchema = z.object({
+  sharedAccessCode: z.string().min(4).max(64)
+});
+
+export const updateSessionSyndicatesSchema = z.object({
+  focusSyndicateName: z.string().min(2).max(40),
+  catalogSyndicateIds: z.array(z.string()).max(16).default([])
+});
+
+export const updateSessionDataSourceSchema = z.object({
+  sourceKey: z.string()
+});
+
+export const updateSessionPayoutRulesSchema = z.object({
+  payoutRules: payoutRulesSchema
+});

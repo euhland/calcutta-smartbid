@@ -49,13 +49,13 @@ export function getMockProjections(): TeamProjection[] {
 
 export function getDefaultPayoutRules(): PayoutRules {
   return {
-    sweet16: 1200,
-    elite8: 2500,
-    finalFour: 5500,
-    titleGame: 9500,
-    champion: 16000,
-    houseTakePct: 8,
-    startingBankroll: 55000
+    roundOf64: 1.0,
+    roundOf32: 1.5,
+    sweet16: 2.5,
+    elite8: 3.0,
+    finalFour: 4.0,
+    champion: 4.0,
+    projectedPot: 220000
   };
 }
 

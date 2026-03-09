@@ -18,10 +18,11 @@ const regionBracketOrders: Record<number, number[]> = {
 };
 
 const stageSequence: Stage[] = [
+  "roundOf64",
+  "roundOf32",
   "sweet16",
   "elite8",
   "finalFour",
-  "titleGame",
   "champion"
 ];
 
@@ -85,7 +86,7 @@ export function simulateAuctionField({
       const winner = simulateGame({
         left: leftChampion,
         right: rightChampion,
-        round: "titleGame",
+        round: "finalFour",
         rng,
         stageHits,
         tracker
@@ -108,7 +109,10 @@ export function simulateAuctionField({
     });
 
     for (const projection of projections) {
-      const payout = computeRealizedPayout(stageHits.get(projection.id) ?? new Set(), payoutRules);
+      const payout = computeRealizedPayout(
+        stageHits.get(projection.id) ?? new Set(),
+        payoutRules
+      );
       tracker.payoutSums[projection.id] += payout;
       tracker.payoutSquares[projection.id] += payout * payout;
 
@@ -138,10 +142,11 @@ export function simulateAuctionField({
         {
           teamId: projection.id,
           roundProbabilities: {
+            roundOf64: counts.roundOf64 / iterations,
+            roundOf32: counts.roundOf32 / iterations,
             sweet16: counts.sweet16 / iterations,
             elite8: counts.elite8 / iterations,
             finalFour: counts.finalFour / iterations,
-            titleGame: counts.titleGame / iterations,
             champion: counts.champion / iterations
           },
           expectedGrossPayout: roundCurrency(expectedGrossPayout),
@@ -207,7 +212,14 @@ function createTracker(projections: TeamProjection[]): AggregateTracker {
   const stageCounts = Object.fromEntries(
     projections.map((projection) => [
       projection.id,
-      { sweet16: 0, elite8: 0, finalFour: 0, titleGame: 0, champion: 0 }
+      {
+        roundOf64: 0,
+        roundOf32: 0,
+        sweet16: 0,
+        elite8: 0,
+        finalFour: 0,
+        champion: 0
+      }
     ])
   );
 
@@ -274,12 +286,12 @@ function simulateRegion({
 
 function getRegionalRounds(regionSize: number): Stage[] {
   if (regionSize === 4) {
-    return ["elite8", "finalFour"];
+    return ["sweet16", "elite8"];
   }
   if (regionSize === 8) {
-    return ["sweet16", "elite8", "finalFour"];
+    return ["roundOf32", "sweet16", "elite8"];
   }
-  return ["sweet16", "elite8", "finalFour", "titleGame"];
+  return ["roundOf64", "roundOf32", "sweet16", "elite8"];
 }
 
 function buildRegionBracket(teams: TeamProjection[]) {
@@ -338,13 +350,14 @@ function computeWinProbability(left: TeamProjection, right: TeamProjection) {
 }
 
 function computeRealizedPayout(stages: Set<Stage>, payoutRules: PayoutRules) {
+  const estimatedDistributablePot = payoutRules.projectedPot;
   let payout = 0;
   for (const stage of stageSequence) {
     if (stages.has(stage)) {
-      payout += payoutRules[stage];
+      payout += estimatedDistributablePot * (payoutRules[stage] / 100);
     }
   }
-  return payout;
+  return roundCurrency(payout);
 }
 
 function buildLikelyConflicts(

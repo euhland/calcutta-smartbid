@@ -23,8 +23,7 @@ function buildSession(): AuctionSession {
     updatedAt: new Date().toISOString(),
     focusSyndicateId: "syn_focus",
     eventAccess: {
-      operatorPasscode: "111111",
-      viewerPasscode: "222222"
+      sharedCodeConfigured: true
     },
     payoutRules,
     syndicates: [
@@ -47,13 +46,19 @@ function buildSession(): AuctionSession {
         portfolioExpectedValue: 0
       }
     ],
+    baseProjections: projections,
+    projectionOverrides: {},
     projections,
     projectionProvider: "mock",
+    activeDataSource: {
+      key: "builtin:mock",
+      name: "Built-in Mock Field",
+      kind: "builtin"
+    },
     finalFourPairings: getDefaultFinalFourPairings(),
     liveState: {
       nominatedTeamId: "alabama",
       currentBid: 6200,
-      likelyBidderIds: ["syn_other"],
       soldTeamIds: ["duke"],
       lastUpdatedAt: new Date().toISOString()
     },
@@ -85,7 +90,7 @@ describe("recommendations", () => {
 
     expect(recommendation).not.toBeNull();
     expect(recommendation?.recommendedMaxBid).toBeGreaterThan(0);
-    expect(recommendation?.drivers).toHaveLength(3);
+    expect(recommendation?.drivers).toHaveLength(2);
     expect(recommendation?.valueGap).toBeDefined();
   });
 });

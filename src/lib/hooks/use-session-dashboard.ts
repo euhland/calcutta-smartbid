@@ -24,6 +24,12 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
   useEffect(() => {
     const client = createBrowserSupabaseClient();
     if (!client) {
+      if (initialDashboard.storageBackend === "supabase") {
+        throw new Error(
+          "Supabase backend is active, but the browser is missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY."
+        );
+      }
+
       const interval = window.setInterval(() => {
         void refresh();
       }, 2500);
@@ -49,6 +55,18 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
         {
           event: "*",
           schema: "public",
+          table: "syndicates",
+          filter: `session_id=eq.${sessionId}`
+        },
+        () => {
+          void refresh();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
           table: "purchase_records",
           filter: `session_id=eq.${sessionId}`
         },
@@ -61,11 +79,12 @@ export function useSessionDashboard(sessionId: string, initialDashboard: Auction
     return () => {
       void client.removeChannel(channel);
     };
-  }, [refresh, sessionId]);
+  }, [initialDashboard.storageBackend, refresh, sessionId]);
 
   return {
     dashboard,
     isRefreshing,
-    refresh
+    refresh,
+    replaceDashboard: setDashboard
   };
 }

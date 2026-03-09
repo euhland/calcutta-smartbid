@@ -12,9 +12,74 @@ create table if not exists public.auction_sessions (
   updated_at timestamptz not null default now()
 );
 
+alter table public.auction_sessions
+  add column if not exists shared_code_hash text;
+
+alter table public.auction_sessions
+  add column if not exists shared_code_lookup text;
+
+alter table public.auction_sessions
+  add column if not exists active_data_source_key text default 'builtin:mock';
+
+alter table public.auction_sessions
+  add column if not exists active_data_source_name text default 'Built-in Mock Field';
+
+alter table public.auction_sessions
+  add column if not exists active_data_source_kind text default 'builtin';
+
+create unique index if not exists auction_sessions_shared_code_lookup_idx
+  on public.auction_sessions(shared_code_lookup);
+
+create table if not exists public.platform_users (
+  id text primary key,
+  name text not null,
+  email text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists platform_users_email_idx
+  on public.platform_users(email);
+
+create table if not exists public.session_members (
+  id text primary key,
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  platform_user_id text null references public.platform_users(id) on delete cascade,
+  name text not null,
+  email text not null,
+  role text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table public.session_members
+  add column if not exists platform_user_id text null references public.platform_users(id) on delete cascade;
+
+create unique index if not exists session_members_session_email_idx
+  on public.session_members(session_id, email);
+
+create unique index if not exists session_members_session_platform_user_idx
+  on public.session_members(session_id, platform_user_id)
+  where platform_user_id is not null;
+
+create table if not exists public.syndicate_catalog (
+  id text primary key,
+  name text not null,
+  color text not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists syndicate_catalog_name_idx
+  on public.syndicate_catalog(name);
+
 create table if not exists public.syndicates (
   id text primary key,
   session_id text not null references public.auction_sessions(id) on delete cascade,
+  catalog_entry_id text null references public.syndicate_catalog(id) on delete set null,
+  session_only boolean not null default false,
   name text not null,
   color text not null,
   spend numeric not null default 0,
@@ -22,6 +87,12 @@ create table if not exists public.syndicates (
   owned_team_ids jsonb not null default '[]'::jsonb,
   portfolio_expected_value numeric not null default 0
 );
+
+alter table public.syndicates
+  add column if not exists catalog_entry_id text null references public.syndicate_catalog(id) on delete set null;
+
+alter table public.syndicates
+  add column if not exists session_only boolean not null default false;
 
 create table if not exists public.team_projections (
   id text not null,
@@ -83,6 +154,27 @@ create table if not exists public.simulation_snapshots (
   iterations integer not null,
   generated_at timestamptz not null,
   payload jsonb not null
+);
+
+create table if not exists public.data_sources (
+  id text primary key,
+  name text not null,
+  kind text not null,
+  active boolean not null default true,
+  config jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  last_tested_at timestamptz null
+);
+
+create table if not exists public.data_import_runs (
+  id text primary key,
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  source_key text not null,
+  source_name text not null,
+  status text not null,
+  message text not null,
+  created_at timestamptz not null default now()
 );
 
 create table if not exists public.purchase_records (
@@ -158,5 +250,26 @@ begin
 end;
 $$;
 
-alter publication supabase_realtime add table public.auction_sessions;
-alter publication supabase_realtime add table public.purchase_records;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'auction_sessions'
+  ) then
+    alter publication supabase_realtime add table public.auction_sessions;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'purchase_records'
+  ) then
+    alter publication supabase_realtime add table public.purchase_records;
+  end if;
+end
+$$;

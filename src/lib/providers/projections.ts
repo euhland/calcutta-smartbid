@@ -1,11 +1,14 @@
-import { getMockProjections } from "@/lib/sample-data";
 import {
+  CsvDataSourceConfig,
+  DataSource,
   ProjectionOverride,
   RemoteProjectionFeed,
+  SessionDataSourceRef,
   TeamProjection,
   TeamScoutingProfile,
   teamScoutingProfileSchema
 } from "@/lib/types";
+import { getMockProjections } from "@/lib/sample-data";
 import { uniqueBy } from "@/lib/utils";
 import { z } from "zod";
 
@@ -26,6 +29,46 @@ const remoteProjectionFeedSchema = z.object({
   provider: z.string(),
   teams: z.array(rawProjectionSchema).min(16)
 });
+
+const requiredCsvHeaders = [
+  "id",
+  "name",
+  "shortName",
+  "region",
+  "seed",
+  "rating",
+  "offense",
+  "defense",
+  "tempo"
+] as const;
+
+type RawProjection = Omit<TeamProjection, "source">;
+
+export async function loadProjectionsFromSource(
+  source: SessionDataSourceRef,
+  dataSources: DataSource[]
+) {
+  if (source.key === "builtin:mock") {
+    return {
+      provider: "mock",
+      teams: validateProjectionFieldShape(getMockProjections())
+    };
+  }
+
+  const dataSource =
+    dataSources.find((candidate) => candidate.id === source.key.replace(/^data-source:/, "")) ??
+    null;
+
+  if (!dataSource || !dataSource.active) {
+    throw new Error("Selected data source is unavailable.");
+  }
+
+  if (dataSource.kind === "csv") {
+    return loadCsvProjectionSource(dataSource);
+  }
+
+  return loadApiProjectionSource(dataSource);
+}
 
 export async function loadProjectionProvider(provider: "mock" | "remote") {
   if (provider === "mock") {
@@ -58,6 +101,129 @@ export async function loadProjectionProvider(provider: "mock" | "remote") {
     provider: parsed.provider,
     teams: validateProjectionFieldShape(normalizeProjectionFeed(parsed.provider, parsed.teams))
   };
+}
+
+export async function testDataSourceConnection(dataSource: DataSource) {
+  if (dataSource.kind === "csv") {
+    await loadCsvProjectionSource(dataSource);
+    return;
+  }
+
+  await loadApiProjectionSource(dataSource);
+}
+
+async function loadApiProjectionSource(dataSource: DataSource) {
+  const config = dataSource.config as { url: string; bearerToken?: string };
+  if (!config.url) {
+    throw new Error("API data source is missing a URL.");
+  }
+
+  const response = await fetch(config.url, {
+    headers: config.bearerToken
+      ? {
+          Authorization: `Bearer ${config.bearerToken}`
+        }
+      : undefined,
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Projection provider returned ${response.status}.`);
+  }
+
+  const parsed = remoteProjectionFeedSchema.parse((await response.json()) as RemoteProjectionFeed);
+  return {
+    provider: parsed.provider || dataSource.name,
+    teams: validateProjectionFieldShape(normalizeProjectionFeed(dataSource.name, parsed.teams))
+  };
+}
+
+function loadCsvProjectionSource(dataSource: DataSource) {
+  const config = dataSource.config as CsvDataSourceConfig;
+  const teams = parseProjectionCsv(config.csvContent, dataSource.name);
+  return {
+    provider: `${dataSource.name} CSV`,
+    teams: validateProjectionFieldShape(teams)
+  };
+}
+
+export function parseProjectionCsv(csvContent: string, provider: string) {
+  const rows = parseCsvRows(csvContent);
+  if (rows.length < 2) {
+    throw new Error("CSV import must include a header row and at least one team.");
+  }
+
+  const headers = rows[0].map((value) => value.trim());
+  const missingHeaders = requiredCsvHeaders.filter((header) => !headers.includes(header));
+  if (missingHeaders.length > 0) {
+    throw new Error(`CSV import is missing headers: ${missingHeaders.join(", ")}.`);
+  }
+
+  const indices = Object.fromEntries(headers.map((header, index) => [header, index]));
+  const teams = rows.slice(1).filter((row) => row.some((value) => value.trim() !== ""));
+  return normalizeProjectionFeed(
+    provider,
+    teams.map((row) => ({
+      id: row[indices.id] ?? "",
+      name: row[indices.name] ?? "",
+      shortName: row[indices.shortName] ?? "",
+      region: row[indices.region] ?? "",
+      seed: Number(row[indices.seed] ?? "0"),
+      rating: Number(row[indices.rating] ?? "0"),
+      offense: Number(row[indices.offense] ?? "0"),
+      defense: Number(row[indices.defense] ?? "0"),
+      tempo: Number(row[indices.tempo] ?? "0")
+    }))
+  );
+}
+
+function parseCsvRows(content: string) {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+  const input = content.replace(/^\uFEFF/, "");
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    const next = input[index + 1];
+
+    if (char === "\"") {
+      if (inQuotes && next === "\"") {
+        current += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      row.push(current);
+      current = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") {
+        index += 1;
+      }
+      row.push(current);
+      rows.push(row);
+      row = [];
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0 || row.length > 0) {
+    row.push(current);
+    rows.push(row);
+  }
+
+  return rows;
 }
 
 export function normalizeProjectionFeed(provider: string, teams: RawProjection[]): TeamProjection[] {
@@ -134,7 +300,6 @@ export function validateProjectionFieldShape(teams: TeamProjection[]) {
 
   return teams;
 }
-type RawProjection = Omit<TeamProjection, "source">;
 
 function normalizeScoutingProfile(
   scouting: TeamScoutingProfile | undefined
