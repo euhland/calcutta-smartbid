@@ -272,34 +272,6 @@ export function DashboardShell({
     });
   }
 
-  async function importField(provider: "mock" | "remote") {
-    setError(null);
-    setNotice(null);
-    const response = await fetch(`/api/sessions/${sessionId}/projections/import`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ provider })
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? `Unable to import ${provider} projections.`);
-      return;
-    }
-
-    setNotice(
-      provider === "mock"
-        ? "Sample field reloaded."
-        : "Remote projection feed imported."
-    );
-    setIsLiveStateDirty(false);
-    startTransition(() => {
-      void refresh();
-    });
-  }
-
   const lastSaleTeamName =
     dashboard.lastPurchase &&
     dashboard.session.projections.find(
@@ -333,31 +305,17 @@ export function DashboardShell({
             <p className="eyebrow">Operator console</p>
             <h3>Live bidding controls</h3>
           </div>
-          {!viewerMode ? (
-            <div className="panel-actions">
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void rebuildSimulation()}
-              >
-                Refresh simulation
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void importField("mock")}
-              >
-                Reload sample field
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void importField("remote")}
-              >
-                Import remote feed
-              </button>
-            </div>
-          ) : null}
+            {!viewerMode ? (
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => void rebuildSimulation()}
+                >
+                  Refresh simulation
+                </button>
+              </div>
+            ) : null}
         </div>
 
         <div className="control-bar__grid">

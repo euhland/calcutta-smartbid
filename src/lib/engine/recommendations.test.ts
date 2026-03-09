@@ -50,6 +50,11 @@ function buildSession(): AuctionSession {
     projectionOverrides: {},
     projections,
     projectionProvider: "mock",
+    activeDataSource: {
+      key: "builtin:mock",
+      name: "Built-in Mock Field",
+      kind: "builtin"
+    },
     finalFourPairings: getDefaultFinalFourPairings(),
     liveState: {
       nominatedTeamId: "alabama",

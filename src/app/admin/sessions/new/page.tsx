@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { SetupForm } from "@/components/setup-form";
 import { requirePlatformAdminPage } from "@/lib/auth";
+import { getSessionRepository } from "@/lib/repository";
 
 export default async function NewSessionPage() {
   await requirePlatformAdminPage();
+  const adminData = await getSessionRepository().getAdminCenterData();
 
   return (
     <main className="landing-page">
@@ -17,7 +19,11 @@ export default async function NewSessionPage() {
             Back to admin center
           </Link>
         </div>
-        <SetupForm />
+        <SetupForm
+          platformUsers={adminData.platformUsers}
+          syndicateCatalog={adminData.syndicateCatalog}
+          dataSources={adminData.dataSources}
+        />
       </section>
     </main>
   );
