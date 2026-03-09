@@ -36,7 +36,9 @@ Secondary users matter, but they should not make the main live workflow slower o
 
 The operator needs immediate signals, not a dense research interface. Any new feature should justify its screen space during a live nomination.
 
-The admin center can be deeper than the live board, but it still needs to stay operational and clear rather than “enterprise” for its own sake.
+The product can feel premium and market-aware, but visual energy must still serve speed, confidence, and decision clarity.
+
+The admin center can be deeper than the live board, but it still needs to stay operational and clear rather than `enterprise` for its own sake.
 
 ### Recommendations must be explainable
 

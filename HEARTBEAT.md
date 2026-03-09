@@ -7,7 +7,13 @@ This is the current-state handoff document. Update it when behavior, architectur
 As of `2026-03-09`:
 
 - app runs locally against Supabase via `.env.local`
+- local smoke test passed:
+  - create session
+  - update live board
+  - record purchase
+  - refresh and confirm persistence
 - production deployment on `Vercel + Supabase` has been confirmed working
+- redesigned UI is live across landing, setup, live session, viewer board, and admin surfaces
 - platform-admin login routes to `/admin`
 - admin center supports:
   - org users
@@ -26,6 +32,8 @@ As of `2026-03-09`:
   - searchable single-control `Active Team for Bidding`
   - automatic board update on team selection
   - purchase recording and persistence
+- live dashboard now refreshes on session syndicate changes in addition to purchases and session meta changes
+- runtime config now fails fast if Vercel is missing required Supabase variables or tries to use local storage
 
 ## Current Financial / Auction Model
 
@@ -66,6 +74,12 @@ Key files:
 
 ## Important Recent Changes
 
+- purchase route now returns a clean message when price is `<= 0`
+- operator local form state no longer resets while polling/realtime refresh is active
+- live dashboard now refreshes when session syndicates change
+- admin pages no longer rely on the legacy panel shell for primary layouts
+- runtime config errors no longer masquerade as missing-session 404s
+- production deployments are guarded from running on local storage
 - session creation is no longer exposed on the public landing page
 - session users authenticate by assigned email plus shared code
 - likely bidders were removed
@@ -80,10 +94,11 @@ Key files:
 ## Known Gaps
 
 - no undo/correction workflow for mistaken purchases
-- no final “actual pot locked” workflow after all teams are sold
+- no final `actual pot locked` workflow after all teams are sold
 - recommendation math still uses a simplified bankroll/headroom assumption
 - no full audit trail UI in admin center
 - no session archive/delete flow
+- session creation still allows rooms to be created from whatever syndicates are selected at creation time; updating the catalog does not retroactively change existing sessions
 - lint still uses deprecated `next lint`
 
 ## Manual Regression Checklist
@@ -107,6 +122,8 @@ Use this after changing auth, admin center, live controls, or payout/simulation 
 - local development can still use `CALCUTTA_STORAGE_BACKEND=local`, but do not treat that path as deployable
 - if dev runtime gets strange after large route/component changes, clear `.next` and restart
 - old stored sessions may still contain legacy payout keys; the repository normalizes them
+- the clearest visible signal that configuration is correct is the session badge reading `Backend supabase`
+- the winner picker on the live board is driven by the session's participating syndicates, not the global syndicate catalog
 
 ## Backlog References
 

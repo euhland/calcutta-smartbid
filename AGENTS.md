@@ -7,6 +7,7 @@ This file is for future Codex sessions and human contributors working on Calcutt
 Use this file to get oriented quickly, preserve working assumptions, and avoid breaking the live auction path.
 
 Use [SOUL.md](/Users/rmilton/Code/Calcutta-SmartBid/SOUL.md) for product intent.
+Use [DESIGN.md](/Users/rmilton/Code/Calcutta-SmartBid/DESIGN.md) for visual direction and shared UI rules.
 Use [HEARTBEAT.md](/Users/rmilton/Code/Calcutta-SmartBid/HEARTBEAT.md) for current state and known gaps.
 
 ## Current Product Shape
@@ -65,6 +66,7 @@ The admin center is the control plane. The live board is the auction execution s
 ### Admin UI
 
 - [src/components/admin-center.tsx](/Users/rmilton/Code/Calcutta-SmartBid/src/components/admin-center.tsx)
+  - platform admin center
   - org users
   - syndicate catalog
   - data sources
@@ -78,6 +80,8 @@ The admin center is the control plane. The live board is the auction execution s
   - participating syndicates
   - payout structure
   - data source selection and import history
+- [src/app/globals.css](/Users/rmilton/Code/Calcutta-SmartBid/src/app/globals.css)
+  - shared design tokens and UI primitives
 
 ### Live Board UI
 
@@ -136,7 +140,15 @@ The admin center is the control plane. The live board is the auction execution s
 - Purchases are authoritative. Do not let UI-only state become the source of truth.
 - Recommendation updates during bidding must use cached simulation output, not rerun full Monte Carlo on every edit.
 - The active-team control must stay fast and low-friction under live auction use.
+- The live winner picker must reflect the session's participating syndicates, not the global syndicate catalog.
 - Raw schema errors should not leak to the operator if a clean domain message can be returned.
+
+## Design System Expectations
+
+- The active visual direction is a dark premium live-market UI, not the legacy warm auction aesthetic.
+- Prefer the shared primitives in `src/app/globals.css` such as `surface-card`, `button`, `field-shell`, `workspace-tab`, and `status-pill`.
+- New admin or live-session UI should match the current shell and spacing patterns before introducing new layout systems.
+- Avoid extending the old compatibility classes unless the goal is temporary migration support.
 
 ## Environment Expectations
 
