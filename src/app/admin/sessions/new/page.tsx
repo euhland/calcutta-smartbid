@@ -8,17 +8,23 @@ export default async function NewSessionPage() {
   const adminData = await getSessionRepository().getAdminCenterData();
 
   return (
-    <main className="landing-page">
-      <section className="setup-section">
-        <div className="section-heading">
-          <p className="eyebrow">Auction setup</p>
-          <h2>Create a live session</h2>
+    <main className="admin-page">
+      <section className="admin-shell">
+        <div className="admin-shell__intro">
+          <p className="eyebrow">Auction Setup</p>
+          <h1>Create a live session</h1>
+          <p>
+            Configure the room, bankroll rules, participating syndicates, and data
+            source before the live board opens.
+          </p>
         </div>
+
         <div className="panel-actions" style={{ marginBottom: "1rem" }}>
           <Link href="/admin" className="action-link">
             Back to admin center
           </Link>
         </div>
+
         <SetupForm
           platformUsers={adminData.platformUsers}
           syndicateCatalog={adminData.syndicateCatalog}

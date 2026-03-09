@@ -47,11 +47,13 @@ export function SetupForm({
   const [iterations, setIterations] = useState(4000);
   const [dataSourceKey, setDataSourceKey] = useState("builtin:mock");
 
-  const focusOptions = useMemo(() => {
-    return activeSyndicates
-      .filter((entry) => selectedSyndicateIds.includes(entry.id))
-      .map((entry) => entry.name);
-  }, [activeSyndicates, selectedSyndicateIds]);
+  const focusOptions = useMemo(
+    () =>
+      activeSyndicates
+        .filter((entry) => selectedSyndicateIds.includes(entry.id))
+        .map((entry) => entry.name),
+    [activeSyndicates, selectedSyndicateIds]
+  );
 
   useEffect(() => {
     if (focusOptions.length === 0) {
@@ -128,81 +130,111 @@ export function SetupForm({
   }
 
   return (
-    <form className="setup-card" onSubmit={onSubmit}>
-      <div className="setup-grid">
-        <label>
-          <span>Session name</span>
-          <input value={sessionName} onChange={(event) => setSessionName(event.target.value)} required />
-        </label>
-        <label>
-          <span>Focus syndicate</span>
-          <select
-            value={focusSyndicateName}
-            onChange={(event) => setFocusSyndicateName(event.target.value)}
-          >
-            {focusOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Shared access code</span>
-          <input value={sharedAccessCode} onChange={(event) => setSharedAccessCode(event.target.value)} required />
-        </label>
-        <label>
-          <span>Projection source</span>
-          <select
-            value={dataSourceKey}
-            onChange={(event) => setDataSourceKey(event.target.value)}
-          >
-            <option value="builtin:mock">Built-in Mock Field</option>
-            {dataSources
-              .filter((source) => source.active)
-              .map((source) => (
-                <option key={source.id} value={`data-source:${source.id}`}>
-                  {source.name} ({source.kind.toUpperCase()})
+    <form className="setup-shell" onSubmit={onSubmit}>
+      <section className="surface-card form-section">
+        <div className="form-section__header">
+          <p className="eyebrow">Session Identity</p>
+          <h2>Core auction setup</h2>
+          <p>
+            Assign the room, select the focus syndicate, and choose the active data
+            source before the auction starts.
+          </p>
+        </div>
+
+        <div className="form-grid form-grid--three">
+          <label className="field-shell">
+            <span>Session name</span>
+            <input
+              value={sessionName}
+              onChange={(event) => setSessionName(event.target.value)}
+              required
+            />
+          </label>
+          <label className="field-shell">
+            <span>Focus syndicate</span>
+            <select
+              value={focusSyndicateName}
+              onChange={(event) => setFocusSyndicateName(event.target.value)}
+            >
+              {focusOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
                 </option>
               ))}
-          </select>
-        </label>
-        <label>
-          <span>Projected pot</span>
-          <input
-            type="number"
-            min={1000}
-            step={1000}
-            value={projectedPot}
-            onChange={(event) => setProjectedPot(Number(event.target.value))}
-            required
-          />
-        </label>
-        <label>
-          <span>Simulation iterations</span>
-          <input
-            type="number"
-            min={1000}
-            max={50000}
-            step={500}
-            value={iterations}
-            onChange={(event) => setIterations(Number(event.target.value))}
-            required
-          />
-        </label>
-      </div>
+            </select>
+          </label>
+          <label className="field-shell">
+            <span>Shared access code</span>
+            <input
+              value={sharedAccessCode}
+              onChange={(event) => setSharedAccessCode(event.target.value)}
+              required
+            />
+          </label>
+        </div>
+      </section>
 
-      <div className="workspace-grid" style={{ marginTop: "1rem" }}>
-        <label className="panel">
-          <span>Assign session users</span>
-          <div className="form-stack" style={{ marginTop: "0.75rem" }}>
-            {activeUsers.length === 0 ? (
-              <p className="viewer-note">Create org users in the admin center before creating a session.</p>
-            ) : (
-              activeUsers.map((user) => {
+      <section className="surface-card form-section">
+        <div className="form-section__header">
+          <p className="eyebrow">Auction Economics</p>
+          <h3>Pot sizing, simulation, and projections</h3>
+        </div>
+
+        <div className="form-grid form-grid--three">
+          <label className="field-shell">
+            <span>Projection source</span>
+            <select value={dataSourceKey} onChange={(event) => setDataSourceKey(event.target.value)}>
+              <option value="builtin:mock">Built-in Mock Field</option>
+              {dataSources
+                .filter((source) => source.active)
+                .map((source) => (
+                  <option key={source.id} value={`data-source:${source.id}`}>
+                    {source.name} ({source.kind.toUpperCase()})
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="field-shell">
+            <span>Projected pot</span>
+            <input
+              type="number"
+              min={1000}
+              step={1000}
+              value={projectedPot}
+              onChange={(event) => setProjectedPot(Number(event.target.value))}
+              required
+            />
+          </label>
+          <label className="field-shell">
+            <span>Simulation iterations</span>
+            <input
+              type="number"
+              min={1000}
+              max={50000}
+              step={500}
+              value={iterations}
+              onChange={(event) => setIterations(Number(event.target.value))}
+              required
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="form-grid form-grid--two">
+        <section className="surface-card form-section">
+          <div className="form-section__header">
+            <p className="eyebrow">Session Access</p>
+            <h3>Assign users and roles</h3>
+          </div>
+
+          {activeUsers.length === 0 ? (
+            <p className="empty-copy">Create org users in the admin center before creating a session.</p>
+          ) : (
+            <div className="selection-list">
+              {activeUsers.map((user) => {
                 const selected = selectedUserIds.includes(user.id);
                 return (
-                  <div key={user.id} className="admin-row">
+                  <div key={user.id} className="selection-row">
                     <label className="checkbox-row">
                       <input
                         type="checkbox"
@@ -214,6 +246,7 @@ export function SetupForm({
                       </span>
                     </label>
                     <select
+                      className="inline-select"
                       disabled={!selected}
                       value={userRoles[user.id] ?? "viewer"}
                       onChange={(event) =>
@@ -228,35 +261,44 @@ export function SetupForm({
                     </select>
                   </div>
                 );
-              })
-            )}
-          </div>
-        </label>
+              })}
+            </div>
+          )}
+        </section>
 
-        <label className="panel">
-          <span>Select participating syndicates</span>
-          <div className="form-stack" style={{ marginTop: "0.75rem" }}>
+        <section className="surface-card form-section">
+          <div className="form-section__header">
+            <p className="eyebrow">Participating Syndicates</p>
+            <h3>Choose the room lineup</h3>
+          </div>
+
+          <div className="selection-list">
             {activeSyndicates.map((entry) => (
-              <label key={entry.id} className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={selectedSyndicateIds.includes(entry.id)}
-                  onChange={() => toggleSyndicate(entry.id)}
-                />
-                <span>{entry.name}</span>
+              <label key={entry.id} className="checkbox-row selection-row selection-row--stacked">
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={selectedSyndicateIds.includes(entry.id)}
+                    onChange={() => toggleSyndicate(entry.id)}
+                  />
+                  {entry.name}
+                </span>
               </label>
             ))}
           </div>
-        </label>
-      </div>
+        </section>
+      </section>
 
-      {error ? <p className="form-error">{error}</p> : null}
+      {error ? <p className="error-text">{error}</p> : null}
 
-      <div className="setup-actions">
-        <button type="submit" disabled={isPending}>
-          {isPending ? "Building session..." : "Create session"}
+      <div className="button-row button-row--spread">
+        <button type="submit" className="button" disabled={isPending}>
+          {isPending ? "Building session..." : "Launch live auction"}
         </button>
-        <p>Use the session settings page to manage access, syndicates, shared code, and imports after creation.</p>
+        <p className="support-copy">
+          Use the session admin center after creation to fine-tune payouts, access,
+          syndicates, and data imports.
+        </p>
       </div>
     </form>
   );
