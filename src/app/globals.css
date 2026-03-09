@@ -423,6 +423,27 @@ label span,
   margin-top: 1rem;
 }
 
+.checkbox-row {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.checkbox-row input {
+  width: auto;
+}
+
+.checkbox-row small {
+  color: var(--muted);
+}
+
+.admin-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  align-items: center;
+}
+
 .chip-grid {
   display: flex;
   gap: 0.75rem;
@@ -556,6 +577,12 @@ th {
   color: var(--muted);
 }
 
+.admin-summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
 .rationale-list {
   display: grid;
   gap: 0.6rem;
@@ -579,6 +606,7 @@ th {
 
 @media (max-width: 900px) {
   .landing-hero,
+  .admin-row,
   .control-bar__grid,
   .top-grid,
   .workspace-grid {

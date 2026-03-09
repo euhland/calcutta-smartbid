@@ -30,10 +30,11 @@ export function formatPercent(value: number) {
 
 export function titleCaseStage(stage: string) {
   const map: Record<string, string> = {
+    roundOf64: "Round of 64",
+    roundOf32: "Round of 32",
     sweet16: "Sweet 16",
     elite8: "Elite 8",
     finalFour: "Final Four",
-    titleGame: "Title Game",
     champion: "Champion"
   };
 

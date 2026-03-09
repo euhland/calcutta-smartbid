@@ -6,11 +6,11 @@ import { getSessionRepository } from "@/lib/repository";
 export default async function AdminPage() {
   const currentAdmin = await requirePlatformAdminPage();
   const repository = getSessionRepository();
-  const sessions = await repository.listSessions();
+  const adminData = await repository.getAdminCenterData();
 
   return (
     <AdminCenter
-      sessions={sessions}
+      initialData={adminData}
       storageBackend={getConfiguredStorageBackend()}
       platformAdminEmail={currentAdmin.email}
     />
