@@ -92,4 +92,11 @@ describe("buildCsvProjectionFeed", () => {
     expect(plan.selected).not.toBeNull();
     expect(plan.selected?.maxBid).toBeLessThanOrEqual(2200);
   });
+
+  it("defaults to investing the full bankroll with zero reserve", () => {
+    const analysis = buildCsvTeamAnalysis(buildCsvFixture(), "csv-test");
+    const plan = buildCsvBudgetPlan(analysis, { bankroll: 10000 });
+    expect(plan.investableCash).toBe(10000);
+    expect(plan.reservedCash).toBe(0);
+  });
 });

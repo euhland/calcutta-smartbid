@@ -18,6 +18,8 @@ interface ParsedCsvRow {
   tempo: number;
   wins: number | null;
   rankedWins: number | null;
+  threePointPct: number | null;
+  offensiveReboundPct: number | null;
   winsAboveBubble: number | null;
 }
 
@@ -36,6 +38,8 @@ export interface CsvAnalysisTeam {
   tempo: number;
   wins: number | null;
   rankedWins: number | null;
+  threePointPct: number | null;
+  offensiveReboundPct: number | null;
   winsAboveBubble: number | null;
 }
 
@@ -146,6 +150,8 @@ export function buildCsvTeamAnalysis(
       tempo: team.tempo,
       wins: rankedRows[index]?.wins ?? null,
       rankedWins: rankedRows[index]?.rankedWins ?? null,
+      threePointPct: rankedRows[index]?.threePointPct ?? null,
+      offensiveReboundPct: rankedRows[index]?.offensiveReboundPct ?? null,
       winsAboveBubble: rankedRows[index]?.winsAboveBubble ?? null
     })),
     intelligence
@@ -163,7 +169,7 @@ export function buildCsvBudgetPlan(
 
   const bankroll = roundCurrency(options.bankroll);
   const targetTeamCount = clamp(Math.round(options.targetTeamCount ?? 8), 2, 24);
-  const reservePct = clamp(options.reservePct ?? 0.28, 0.05, 0.7);
+  const reservePct = clamp(options.reservePct ?? 0, 0, 0.7);
   const candidatePoolMultiplier = clamp(options.candidatePoolMultiplier ?? 4, 2, 8);
   const maxSingleTeamPct = clamp(options.maxSingleTeamPct ?? 0.22, 0.08, 0.45);
   const candidateCount = clamp(
@@ -280,6 +286,20 @@ function parseAndRankRows(csvText: string) {
   const optionalColumns = {
     wins: getOptionalHeaderIndex(headerLookup, ["wins"]),
     rankedWins: getOptionalHeaderIndex(headerLookup, ["ranked wins"]),
+    threePointPct: getOptionalHeaderIndex(headerLookup, [
+      "offensive three point percentage",
+      "offensive 3 point percentage",
+      "offensive 3pt percentage",
+      "three point percentage",
+      // Some exports repeat this header text for the three-point column.
+      "offensive two point percentage"
+    ]),
+    offensiveReboundPct: getOptionalHeaderIndex(headerLookup, [
+      "offensive rebound percentage",
+      "offensive rebounds",
+      "off reb percentage",
+      "off rebounding percentage"
+    ]),
     winsAboveBubble: getOptionalHeaderIndex(headerLookup, ["wins above bubble"])
   };
 
@@ -361,6 +381,7 @@ function buildScouting(team: RankedCsvRow): TeamScoutingProfile {
   return {
     netRank: team.rank,
     kenpomRank: team.rank,
+    threePointPct: team.threePointPct ?? undefined,
     rankedWins: team.rankedWins ?? undefined,
     quadWins: team.winsAboveBubble === null ? undefined : inferQuadWins(team.winsAboveBubble),
     offenseStyle: describeOffense(team.offense, team.tempo),
@@ -416,6 +437,8 @@ function parseProjectionRow(
   optionalColumns: {
     wins: number | null;
     rankedWins: number | null;
+    threePointPct: number | null;
+    offensiveReboundPct: number | null;
     winsAboveBubble: number | null;
   }
 ): ParsedCsvRow | null {
@@ -443,6 +466,14 @@ function parseProjectionRow(
       optionalColumns.rankedWins === null
         ? null
         : parseNumber(getCell(row, optionalColumns.rankedWins), { asInteger: true }),
+    threePointPct:
+      optionalColumns.threePointPct === null
+        ? null
+        : parseNumber(getCell(row, optionalColumns.threePointPct)),
+    offensiveReboundPct:
+      optionalColumns.offensiveReboundPct === null
+        ? null
+        : parseNumber(getCell(row, optionalColumns.offensiveReboundPct)),
     winsAboveBubble:
       optionalColumns.winsAboveBubble === null
         ? null

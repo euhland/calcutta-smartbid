@@ -78,6 +78,18 @@ export interface TeamScoutingProfile {
   defenseStyle?: string;
 }
 
+export interface CsvAnalysisPortfolioEntry {
+  teamId: string;
+  paidPrice: number;
+}
+
+export interface CsvAnalysisPortfolio {
+  sessionId: string;
+  memberId: string;
+  entries: CsvAnalysisPortfolioEntry[];
+  updatedAt: string;
+}
+
 export interface ProjectionOverride {
   teamId: string;
   rating?: number;
@@ -465,6 +477,15 @@ export const teamScoutingProfileSchema = z.object({
   ats: teamAtsRecordSchema.optional(),
   offenseStyle: z.string().trim().min(2).max(80).optional(),
   defenseStyle: z.string().trim().min(2).max(80).optional()
+});
+
+export const csvAnalysisPortfolioEntrySchema = z.object({
+  teamId: z.string().min(1),
+  paidPrice: z.number().min(0)
+});
+
+export const saveCsvAnalysisPortfolioSchema = z.object({
+  entries: z.array(csvAnalysisPortfolioEntrySchema).max(200)
 });
 export const loginSchema = z.object({
   email: z.string().email(),

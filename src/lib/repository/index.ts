@@ -19,6 +19,7 @@ import {
   AdminSessionSummary,
   AuctionDashboard,
   AuctionSession,
+  CsvAnalysisPortfolio,
   DataImportRun,
   DataSource,
   PlatformUser,
@@ -48,6 +49,7 @@ interface SessionStore {
   syndicateCatalog: SyndicateCatalogEntry[];
   dataSources: DataSource[];
   dataImportRuns: DataImportRun[];
+  csvAnalysisPortfolios: CsvAnalysisPortfolio[];
 }
 
 interface CreateSessionInput {
@@ -174,6 +176,12 @@ export interface SessionRepository {
     input: ProjectionOverrideInput
   ): Promise<AuctionDashboard>;
   clearProjectionOverride(sessionId: string, teamId: string): Promise<AuctionDashboard>;
+  getCsvAnalysisPortfolio(sessionId: string, memberId: string): Promise<CsvAnalysisPortfolio>;
+  saveCsvAnalysisPortfolio(
+    sessionId: string,
+    memberId: string,
+    entries: Array<{ teamId: string; paidPrice: number }>
+  ): Promise<CsvAnalysisPortfolio>;
 }
 
 class LocalSessionRepository implements SessionRepository {
@@ -573,6 +581,59 @@ class LocalSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {
+    const store = await this.readStore();
+    findSession(store.sessions, sessionId);
+    const existing =
+      store.csvAnalysisPortfolios.find(
+        (item) => item.sessionId === sessionId && item.memberId === memberId
+      ) ?? null;
+    if (existing) {
+      return {
+        ...existing,
+        entries: sanitizeCsvPortfolioEntries(existing.entries)
+      };
+    }
+
+    return {
+      sessionId,
+      memberId,
+      entries: [],
+      updatedAt: new Date(0).toISOString()
+    };
+  }
+
+  async saveCsvAnalysisPortfolio(
+    sessionId: string,
+    memberId: string,
+    entries: Array<{ teamId: string; paidPrice: number }>
+  ) {
+    const store = await this.readStore();
+    findSession(store.sessions, sessionId);
+    const normalizedEntries = sanitizeCsvPortfolioEntries(entries);
+    const updatedAt = new Date().toISOString();
+
+    const existingIndex = store.csvAnalysisPortfolios.findIndex(
+      (item) => item.sessionId === sessionId && item.memberId === memberId
+    );
+
+    const next: CsvAnalysisPortfolio = {
+      sessionId,
+      memberId,
+      entries: normalizedEntries,
+      updatedAt
+    };
+
+    if (existingIndex >= 0) {
+      store.csvAnalysisPortfolios[existingIndex] = next;
+    } else {
+      store.csvAnalysisPortfolios.push(next);
+    }
+
+    await this.writeStore(store);
+    return next;
+  }
+
   private async requireSession(sessionId: string) {
     const session = await this.getSession(sessionId);
     if (!session) {
@@ -592,7 +653,8 @@ class LocalSessionRepository implements SessionRepository {
           platformUsers: [],
           syndicateCatalog: [],
           dataSources: [],
-          dataImportRuns: []
+          dataImportRuns: [],
+          csvAnalysisPortfolios: []
         };
       }
       throw error;
@@ -1269,6 +1331,64 @@ class SupabaseSessionRepository implements SessionRepository {
     clearProjectionOverrideMutation(session, teamId);
     await this.persistProjectionState(session, teamId, true);
     return buildDashboard(session, this.backend);
+  }
+
+  async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {
+    await this.requireSession(sessionId);
+    const client = requireSupabaseClient();
+    const result = await client
+      .from("csv_analysis_portfolios")
+      .select("*")
+      .eq("session_id", sessionId)
+      .eq("member_id", memberId)
+      .maybeSingle();
+
+    throwOnSupabaseError(result.error);
+
+    if (!result.data) {
+      return {
+        sessionId,
+        memberId,
+        entries: [],
+        updatedAt: new Date(0).toISOString()
+      } satisfies CsvAnalysisPortfolio;
+    }
+
+    const row = result.data as Record<string, unknown>;
+    return {
+      sessionId: String(row.session_id),
+      memberId: String(row.member_id),
+      entries: sanitizeCsvPortfolioEntries(
+        (row.entries as Array<{ teamId: string; paidPrice: number }> | null) ?? []
+      ),
+      updatedAt: String(row.updated_at)
+    } satisfies CsvAnalysisPortfolio;
+  }
+
+  async saveCsvAnalysisPortfolio(
+    sessionId: string,
+    memberId: string,
+    entries: Array<{ teamId: string; paidPrice: number }>
+  ) {
+    await this.requireSession(sessionId);
+    const client = requireSupabaseClient();
+    const normalizedEntries = sanitizeCsvPortfolioEntries(entries);
+    const updatedAt = new Date().toISOString();
+
+    const result = await client.from("csv_analysis_portfolios").upsert({
+      session_id: sessionId,
+      member_id: memberId,
+      entries: normalizedEntries,
+      updated_at: updatedAt
+    });
+    throwOnSupabaseError(result.error);
+
+    return {
+      sessionId,
+      memberId,
+      entries: normalizedEntries,
+      updatedAt
+    } satisfies CsvAnalysisPortfolio;
   }
 
   private async requireSession(sessionId: string) {
@@ -2115,7 +2235,13 @@ function normalizeStoreShape(store: SessionStore) {
     })),
     syndicateCatalog: store.syndicateCatalog ?? [],
     dataSources: store.dataSources ?? [],
-    dataImportRuns: store.dataImportRuns ?? []
+    dataImportRuns: store.dataImportRuns ?? [],
+    csvAnalysisPortfolios: (store.csvAnalysisPortfolios ?? []).map((portfolio) => ({
+      sessionId: String(portfolio.sessionId),
+      memberId: String(portfolio.memberId),
+      entries: sanitizeCsvPortfolioEntries(portfolio.entries),
+      updatedAt: String(portfolio.updatedAt ?? new Date(0).toISOString())
+    }))
   };
 }
 
@@ -2353,6 +2479,25 @@ function numberOrUndefined(value: unknown) {
     return undefined;
   }
   return Number(value);
+}
+
+function sanitizeCsvPortfolioEntries(
+  entries: Array<{ teamId: string; paidPrice: number }> | null | undefined
+) {
+  const deduped = new Map<string, number>();
+  for (const entry of entries ?? []) {
+    const teamId = String(entry.teamId ?? "").trim();
+    if (!teamId) {
+      continue;
+    }
+    const paidPrice = Number(entry.paidPrice ?? 0);
+    deduped.set(teamId, Number.isFinite(paidPrice) ? Math.max(0, paidPrice) : 0);
+  }
+
+  return [...deduped.entries()].map(([teamId, paidPrice]) => ({
+    teamId,
+    paidPrice
+  }));
 }
 
 type ReferenceData = Pick<

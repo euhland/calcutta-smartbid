@@ -27,6 +27,20 @@ function parsePlatformAdminEmails() {
     .filter(Boolean);
 }
 
+function isDevBypassEnabled() {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+
+  const raw = process.env.DEV_BYPASS_AUTH?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
+function getDevBypassSessionId() {
+  const sessionId = process.env.DEV_BYPASS_SESSION_ID?.trim();
+  return sessionId && sessionId.length > 0 ? sessionId : null;
+}
+
 function getPlatformAdminSharedCode() {
   return process.env.PLATFORM_ADMIN_SHARED_CODE?.trim() ?? "";
 }
@@ -105,6 +119,30 @@ export function clearAuthCookie(response: Response) {
 }
 
 export async function getAuthenticatedMember() {
+  if (isDevBypassEnabled()) {
+    const sessionId = getDevBypassSessionId();
+    if (sessionId) {
+      return {
+        scope: "session",
+        sessionId,
+        memberId: null,
+        name: "Dev Bypass",
+        email: "dev-bypass@localhost",
+        role: "admin"
+      } satisfies AuthenticatedMember;
+    }
+
+    const adminEmail = parsePlatformAdminEmails()[0] ?? "dev-admin@localhost";
+    return {
+      scope: "platform",
+      sessionId: null,
+      memberId: null,
+      name: getPlatformAdminName(adminEmail),
+      email: adminEmail,
+      role: "admin"
+    } satisfies AuthenticatedMember;
+  }
+
   const cookieStore = await cookies();
   return parseCookieValue(cookieStore.get(AUTH_COOKIE_NAME)?.value);
 }
@@ -113,6 +151,39 @@ export async function requireAuthenticatedMemberForSession(
   sessionId: string,
   requiredRole: SessionRole = "viewer"
 ) {
+  if (isDevBypassEnabled()) {
+    const configuredSessionId = getDevBypassSessionId();
+    if (configuredSessionId && configuredSessionId !== sessionId) {
+      throw new Error(
+        `Dev bypass is configured for session ${configuredSessionId}. Requested ${sessionId}.`
+      );
+    }
+
+    const repository = getSessionRepository();
+    const session = await repository.getSession(sessionId);
+    if (!session) {
+      throw new Error("Auction session not found.");
+    }
+
+    const eligibleMember =
+      session.accessMembers
+        .filter((member) => member.active)
+        .find((member) => getRoleRank(member.role) >= getRoleRank(requiredRole)) ?? null;
+
+    if (!eligibleMember) {
+      throw new Error("You do not have permission to perform this action.");
+    }
+
+    return {
+      scope: "session",
+      sessionId,
+      memberId: eligibleMember.id,
+      name: eligibleMember.name,
+      email: eligibleMember.email,
+      role: eligibleMember.role
+    } satisfies AuthenticatedMember;
+  }
+
   const auth = await getAuthenticatedMember();
   if (!auth) {
     throw new Error("Authentication required.");

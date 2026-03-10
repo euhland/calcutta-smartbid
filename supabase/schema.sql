@@ -177,6 +177,14 @@ create table if not exists public.data_import_runs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.csv_analysis_portfolios (
+  session_id text not null references public.auction_sessions(id) on delete cascade,
+  member_id text not null references public.session_members(id) on delete cascade,
+  entries jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (session_id, member_id)
+);
+
 create table if not exists public.purchase_records (
   id text primary key,
   session_id text not null references public.auction_sessions(id) on delete cascade,

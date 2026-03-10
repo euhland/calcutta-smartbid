@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const bankroll = Number(url.searchParams.get("bankroll") ?? "10000");
     const targetTeams = Number(url.searchParams.get("targetTeams") ?? "8");
-    const reservePct = parsePercentInput(url.searchParams.get("reservePct"), 0.28);
+    const reservePct = parsePercentInput(url.searchParams.get("reservePct"), 0);
     const maxSingleTeamPct = parsePercentInput(
       url.searchParams.get("maxSingleTeamPct"),
       0.22
