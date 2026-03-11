@@ -80,6 +80,8 @@ export function DashboardShell({
   const teamSelectRef = useRef<HTMLSelectElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
   const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
+  const activeTeamSaveInFlightRef = useRef(false);
+  const pendingActiveTeamIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (isLiveStateDirty && !viewerMode) {
@@ -191,30 +193,52 @@ export function DashboardShell({
   }, [selectedOverride, selectedTeam]);
 
   const saveActiveTeam = useCallback(async (nextTeamId: string) => {
-    setError(null);
-    setNotice(null);
+    pendingActiveTeamIdRef.current = nextTeamId;
 
-    const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        nominatedTeamId: nextTeamId || null
-      })
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      setError(payload.error ?? "Unable to update active team.");
+    if (activeTeamSaveInFlightRef.current) {
       return;
     }
 
-    setIsLiveStateDirty(false);
-    void broadcastRefresh("active-team");
-    startTransition(() => {
-      void refresh();
-    });
+    activeTeamSaveInFlightRef.current = true;
+
+    while (pendingActiveTeamIdRef.current !== null) {
+      const teamIdToPersist = pendingActiveTeamIdRef.current;
+      pendingActiveTeamIdRef.current = null;
+
+      setError(null);
+      setNotice(null);
+
+      const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          nominatedTeamId: teamIdToPersist || null
+        })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+
+        if (pendingActiveTeamIdRef.current === null) {
+          setError(payload.error ?? "Unable to update active team.");
+        }
+
+        continue;
+      }
+
+      if (pendingActiveTeamIdRef.current !== null) {
+        continue;
+      }
+
+      void broadcastRefresh("active-team");
+      startTransition(() => {
+        void refresh();
+      });
+    }
+
+    activeTeamSaveInFlightRef.current = false;
   }, [broadcastRefresh, refresh, sessionId]);
 
   const saveLiveState = useCallback(async () => {
