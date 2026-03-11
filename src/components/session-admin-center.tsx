@@ -26,6 +26,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showCurrentCode, setShowCurrentCode] = useState(false);
   const [sharedAccessCode, setSharedAccessCode] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
     initialConfig.accessMembers.map((member) => member.platformUserId ?? "").filter(Boolean)
@@ -98,6 +99,10 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
     setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
   }, [config]);
+
+  useEffect(() => {
+    setShowCurrentCode(false);
+  }, [config.currentSharedAccessCode]);
 
   useEffect(() => {
     if (pendingFocusOptions.length === 0) {
@@ -204,6 +209,7 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           "Shared access code rotated."
         );
         setSharedAccessCode("");
+        setShowCurrentCode(false);
       } catch (submitError) {
         setError(
           submitError instanceof Error
@@ -212,6 +218,20 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
         );
       }
     });
+  }
+
+  async function onCopyCurrentCode() {
+    if (!config.currentSharedAccessCode) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(config.currentSharedAccessCode);
+      setError(null);
+      setNotice("Shared access code copied.");
+    } catch {
+      setError("Unable to copy the shared access code.");
+    }
   }
 
   function onSaveSyndicates(event: FormEvent<HTMLFormElement>) {
@@ -397,6 +417,37 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
             <p className="eyebrow">Login</p>
             <h3>Rotate shared access code</h3>
             <p>Issue a new room code without changing the assigned member list.</p>
+          </div>
+          <div className="field-shell">
+            <span>Current shared access code</span>
+            {config.currentSharedAccessCode ? (
+              <div className="secret-shell">
+                <strong className="secret-shell__value">
+                  {showCurrentCode ? config.currentSharedAccessCode : "••••••••••"}
+                </strong>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button button-secondary button--small"
+                    onClick={() => setShowCurrentCode((current) => !current)}
+                  >
+                    {showCurrentCode ? "Hide code" : "Reveal code"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-ghost button--small"
+                    onClick={() => void onCopyCurrentCode()}
+                  >
+                    Copy code
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <p className="support-copy">
+                Current code is not recoverable for this session yet. Rotate it once to store an
+                encrypted revealable version.
+              </p>
+            )}
           </div>
           <form className="setup-shell" onSubmit={onRotateCode}>
             <label className="field-shell">
