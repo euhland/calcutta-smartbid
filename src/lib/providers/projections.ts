@@ -4,7 +4,9 @@ import {
   ProjectionOverride,
   RemoteProjectionFeed,
   SessionDataSourceRef,
-  TeamProjection
+  TeamProjection,
+  TeamScoutingProfile,
+  teamScoutingProfileSchema
 } from "@/lib/types";
 import { getMockProjections } from "@/lib/sample-data";
 import { uniqueBy } from "@/lib/utils";
@@ -19,7 +21,8 @@ const rawProjectionSchema = z.object({
   rating: z.number(),
   offense: z.number(),
   defense: z.number(),
-  tempo: z.number()
+  tempo: z.number(),
+  scouting: teamScoutingProfileSchema.optional()
 });
 
 const remoteProjectionFeedSchema = z.object({
@@ -236,7 +239,8 @@ export function normalizeProjectionFeed(provider: string, teams: RawProjection[]
         rating: Number(team.rating),
         offense: Number(team.offense),
         defense: Number(team.defense),
-        tempo: Number(team.tempo)
+        tempo: Number(team.tempo),
+        scouting: normalizeScoutingProfile(team.scouting)
       }))
       .sort((left, right) => {
         if (left.region === right.region) {
@@ -295,4 +299,44 @@ export function validateProjectionFieldShape(teams: TeamProjection[]) {
   }
 
   return teams;
+}
+
+function normalizeScoutingProfile(
+  scouting: TeamScoutingProfile | undefined
+): TeamScoutingProfile | undefined {
+  if (!scouting) {
+    return undefined;
+  }
+
+  const normalized: TeamScoutingProfile = {
+    netRank: scouting.netRank ? Number(scouting.netRank) : undefined,
+    kenpomRank: scouting.kenpomRank ? Number(scouting.kenpomRank) : undefined,
+    threePointPct:
+      scouting.threePointPct !== undefined
+        ? Number(scouting.threePointPct)
+        : undefined,
+    rankedWins:
+      scouting.rankedWins !== undefined ? Number(scouting.rankedWins) : undefined,
+    quadWins: scouting.quadWins
+      ? {
+          q1: Number(scouting.quadWins.q1),
+          q2: Number(scouting.quadWins.q2),
+          q3: Number(scouting.quadWins.q3),
+          q4: Number(scouting.quadWins.q4)
+        }
+      : undefined,
+    ats: scouting.ats
+      ? {
+          wins: Number(scouting.ats.wins),
+          losses: Number(scouting.ats.losses),
+          pushes: Number(scouting.ats.pushes)
+        }
+      : undefined,
+    offenseStyle: scouting.offenseStyle?.trim() || undefined,
+    defenseStyle: scouting.defenseStyle?.trim() || undefined
+  };
+
+  return Object.values(normalized).some((value) => value !== undefined)
+    ? normalized
+    : undefined;
 }

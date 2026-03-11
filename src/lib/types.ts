@@ -51,6 +51,43 @@ export interface TeamProjection {
   defense: number;
   tempo: number;
   source: string;
+  scouting?: TeamScoutingProfile;
+}
+
+export interface TeamQuadWins {
+  q1: number;
+  q2: number;
+  q3: number;
+  q4: number;
+}
+
+export interface TeamAtsRecord {
+  wins: number;
+  losses: number;
+  pushes: number;
+}
+
+export interface TeamScoutingProfile {
+  netRank?: number;
+  kenpomRank?: number;
+  threePointPct?: number;
+  rankedWins?: number;
+  quadWins?: TeamQuadWins;
+  ats?: TeamAtsRecord;
+  offenseStyle?: string;
+  defenseStyle?: string;
+}
+
+export interface CsvAnalysisPortfolioEntry {
+  teamId: string;
+  paidPrice: number;
+}
+
+export interface CsvAnalysisPortfolio {
+  sessionId: string;
+  memberId: string;
+  entries: CsvAnalysisPortfolioEntry[];
+  updatedAt: string;
 }
 
 export interface ProjectionOverride {
@@ -418,6 +455,38 @@ export const saveProjectionOverrideSchema = z.object({
   tempo: z.number().optional()
 });
 
+export const teamQuadWinsSchema = z.object({
+  q1: z.number().int().nonnegative(),
+  q2: z.number().int().nonnegative(),
+  q3: z.number().int().nonnegative(),
+  q4: z.number().int().nonnegative()
+});
+
+export const teamAtsRecordSchema = z.object({
+  wins: z.number().int().nonnegative(),
+  losses: z.number().int().nonnegative(),
+  pushes: z.number().int().nonnegative()
+});
+
+export const teamScoutingProfileSchema = z.object({
+  netRank: z.number().int().positive().optional(),
+  kenpomRank: z.number().int().positive().optional(),
+  threePointPct: z.number().min(0).max(100).optional(),
+  rankedWins: z.number().int().nonnegative().optional(),
+  quadWins: teamQuadWinsSchema.optional(),
+  ats: teamAtsRecordSchema.optional(),
+  offenseStyle: z.string().trim().min(2).max(80).optional(),
+  defenseStyle: z.string().trim().min(2).max(80).optional()
+});
+
+export const csvAnalysisPortfolioEntrySchema = z.object({
+  teamId: z.string().min(1),
+  paidPrice: z.number().min(0)
+});
+
+export const saveCsvAnalysisPortfolioSchema = z.object({
+  entries: z.array(csvAnalysisPortfolioEntrySchema).max(200)
+});
 export const loginSchema = z.object({
   email: z.string().email(),
   sharedCode: z.string().min(4).max(64)
