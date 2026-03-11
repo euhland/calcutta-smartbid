@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useCallback,
   startTransition,
@@ -424,6 +425,14 @@ export function DashboardShell({
             Signed in as {currentMember.name} ({currentMember.role})
           </div>
           <div className="status-pill">Backend {dashboard.storageBackend}</div>
+          {!viewerMode && currentMember.role === "admin" ? (
+            <Link
+              href={`/csv-analysis?sessionId=${sessionId}`}
+              className="button button-secondary"
+            >
+              Open analysis
+            </Link>
+          ) : null}
           {!viewerMode ? (
             <div className="status-pill">Shortcuts /, B, W, Enter</div>
           ) : null}

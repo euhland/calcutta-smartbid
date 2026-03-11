@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { PayoutRules, SessionAdminConfig } from "@/lib/types";
 import { titleCaseStage } from "@/lib/utils";
@@ -330,6 +331,12 @@ export function SessionAdminCenter({ initialConfig }: SessionAdminCenterProps) {
           <span className="status-pill">
             {config.importRuns.length} import run{config.importRuns.length === 1 ? "" : "s"}
           </span>
+          <Link
+            href={`/csv-analysis?sessionId=${config.session.id}`}
+            className="button button-secondary"
+          >
+            Open analysis
+          </Link>
         </div>
       </header>
 
