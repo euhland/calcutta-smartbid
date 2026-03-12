@@ -35,7 +35,7 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     updatedAt: session.updatedAt,
     archivedAt: session.archivedAt,
     archivedByName: session.archivedByName,
-    archivedByEmail: session.archivedByEmail,
+    archivedByEmail: null,
     focusSyndicateId: mothership.id,
     eventAccess: session.eventAccess,
     payoutRules: session.payoutRules,
