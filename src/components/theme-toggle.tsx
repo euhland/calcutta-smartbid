@@ -6,14 +6,22 @@ export function ThemeToggle() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
-    const stored = localStorage.getItem("theme") as "dark" | "light" | null;
-    if (stored === "dark" || stored === "light") setTheme(stored);
+    try {
+      const stored = localStorage.getItem("theme") as "dark" | "light" | null;
+      if (stored === "dark" || stored === "light") setTheme(stored);
+    } catch {
+      // localStorage unavailable (e.g. Safari private mode)
+    }
   }, []);
 
   const toggle = useCallback(() => {
     const next = theme === "dark" ? "light" : "dark";
     setTheme(next);
-    localStorage.setItem("theme", next);
+    try {
+      localStorage.setItem("theme", next);
+    } catch {
+      // localStorage unavailable (e.g. Safari private mode)
+    }
     document.documentElement.setAttribute("data-theme", next);
   }, [theme]);
 
