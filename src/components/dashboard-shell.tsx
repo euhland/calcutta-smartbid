@@ -86,6 +86,7 @@ export function DashboardShell({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analysisSearch, setAnalysisSearch] = useState("");
+  const [analysisTeamId, setAnalysisTeamId] = useState("");
   const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
   const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -146,10 +147,12 @@ export function DashboardShell({
     () => new Map(dashboard.ledger.map((syndicate) => [syndicate.id, syndicate])),
     [dashboard.ledger]
   );
+  const analysisDetailTeam =
+    dashboard.session.projections.find((t) => t.id === analysisTeamId) ?? null;
   const analysisRow =
-    dashboard.analysis.ranking.find((row) => row.teamId === selectedTeamId) ?? null;
+    dashboard.analysis.ranking.find((row) => row.teamId === analysisTeamId) ?? null;
   const analysisBudgetRow =
-    dashboard.analysis.budgetRows.find((row) => row.teamId === selectedTeamId) ?? null;
+    dashboard.analysis.budgetRows.find((row) => row.teamId === analysisTeamId) ?? null;
   const focusOwnedTeams = useMemo(
     () =>
       dashboard.soldTeams.filter(
@@ -202,8 +205,8 @@ export function DashboardShell({
     0,
     dashboard.focusSyndicate.remainingBankroll - currentBid
   );
-  const selectedSimulation = selectedTeam
-    ? snapshot?.teamResults[selectedTeam.id] ?? null
+  const selectedSimulation = analysisDetailTeam
+    ? snapshot?.teamResults[analysisDetailTeam.id] ?? null
     : null;
 
   useEffect(() => {
@@ -595,13 +598,12 @@ export function DashboardShell({
                     </h3>
                     <p>
                       {recommendation
-                        ? recommendation.stoplight === "buy"
-                          ? "The shared analysis model still supports an aggressive price in the current range. Keep the board moving and confirm the winner when the sale closes."
-                          : recommendation.stoplight === "caution"
-                            ? "The room is into stretch pricing. Stay disciplined and only push if you want the portfolio exposure."
-                            : "The room is above the current model cap. Preserve bankroll and wait for a better nomination."
+                        ? recommendation.rationale[0] ?? ""
                         : "The auction surface stays focused on one decision strip at a time."}
                     </p>
+                    {recommendation?.rationale[3] ? (
+                      <p className="call-conflict">{recommendation.rationale[3]}</p>
+                    ) : null}
                   </article>
                 </section>
 
@@ -923,8 +925,8 @@ export function DashboardShell({
                       {filteredAnalysisRows.map((row) => (
                         <tr
                           key={row.teamId}
-                          className={cn(selectedTeamId === row.teamId && "table-row--focus")}
-                          onClick={() => setSelectedTeamId(row.teamId)}
+                          className={cn(analysisTeamId === row.teamId && "table-row--focus")}
+                          onClick={() => setAnalysisTeamId(row.teamId)}
                         >
                           <td>#{row.rank}</td>
                           <td>
@@ -949,16 +951,16 @@ export function DashboardShell({
                 <div className="section-headline">
                   <div>
                     <p className="eyebrow">Selected Team</p>
-                    <h3>{selectedTeam?.name ?? "No team selected"}</h3>
+                    <h3>{analysisDetailTeam?.name ?? "No team selected"}</h3>
                   </div>
                 </div>
 
-                {selectedTeam && analysisRow ? (
+                {analysisDetailTeam && analysisRow ? (
                   <div className="stack-layout">
                     <div className="metric-grid">
                       <MetricCard
                         label="Rank / percentile"
-                        value={`#${dashboard.analysis.ranking.findIndex((row) => row.teamId === selectedTeam.id) + 1} / ${analysisRow.percentile}th`}
+                        value={`#${dashboard.analysis.ranking.findIndex((row) => row.teamId === analysisDetailTeam.id) + 1} / ${analysisRow.percentile}th`}
                       />
                       <MetricCard
                         label="Composite score"
@@ -966,7 +968,7 @@ export function DashboardShell({
                       />
                       <MetricCard
                         label="Model rating"
-                        value={selectedTeam.rating.toFixed(3)}
+                        value={analysisDetailTeam.rating.toFixed(3)}
                       />
                       <MetricCard
                         label="Target / max"
@@ -981,7 +983,7 @@ export function DashboardShell({
                     <div className="metric-grid">
                       <MetricCard
                         label="Off / Def / Tempo"
-                        value={`${selectedTeam.offense.toFixed(1)} / ${selectedTeam.defense.toFixed(1)} / ${selectedTeam.tempo.toFixed(1)}`}
+                        value={`${analysisDetailTeam.offense.toFixed(1)} / ${analysisDetailTeam.defense.toFixed(1)} / ${analysisDetailTeam.tempo.toFixed(1)}`}
                       />
                       <MetricCard
                         label="Q1 wins"

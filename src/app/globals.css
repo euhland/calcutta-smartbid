@@ -760,6 +760,12 @@ kbd {
   line-height: 1.6;
 }
 
+.call-conflict {
+  margin-top: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
 .metric-card {
   padding: 1rem;
 }
