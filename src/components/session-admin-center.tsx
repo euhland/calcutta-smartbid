@@ -469,32 +469,34 @@ export function SessionAdminCenter({
             </div>
           </div>
 
-          <p className="eyebrow">Shared access code</p>
-          {config.currentSharedAccessCode ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", flexWrap: "wrap" }}>
-              <span style={{ fontFamily: "var(--font-mono)" }}>
-                {showCurrentCode ? config.currentSharedAccessCode : "••••••••••"}
-              </span>
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="button button-secondary button--small"
-                  onClick={() => setShowCurrentCode((current) => !current)}
-                >
-                  {showCurrentCode ? "Hide" : "Reveal"}
-                </button>
-                <button
-                  type="button"
-                  className="button button-ghost button--small"
-                  onClick={() => void onCopyCurrentCode()}
-                >
-                  Copy
-                </button>
+          <div className="admin-utility-block">
+            <p className="eyebrow">Shared access code</p>
+            {config.currentSharedAccessCode ? (
+              <div className="admin-utility-row">
+                <strong className="secret-shell__value">
+                  {showCurrentCode ? config.currentSharedAccessCode : "••••••••••"}
+                </strong>
+                <div className="button-row">
+                  <button
+                    type="button"
+                    className="button button-secondary button--small"
+                    onClick={() => setShowCurrentCode((current) => !current)}
+                  >
+                    {showCurrentCode ? "Hide" : "Reveal"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button button-ghost button--small"
+                    onClick={() => void onCopyCurrentCode()}
+                  >
+                    Copy
+                  </button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <p className="support-copy">Rotate once to store a revealable code.</p>
-          )}
+            ) : (
+              <p className="support-copy">Rotate once to store a revealable code.</p>
+            )}
+          </div>
 
           <form onSubmit={onRotateCode} style={{ display: "contents" }}>
             <label className="field-shell">
@@ -512,9 +514,9 @@ export function SessionAdminCenter({
             </div>
           </form>
 
-          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-5)" }}>
+          <div className="admin-pane__section">
             <form onSubmit={onSaveAccess}>
-              <div className="admin-pane__header" style={{ marginBottom: "var(--space-4)" }}>
+              <div className="admin-pane__header admin-pane__section-header">
                 <h3>Users</h3>
                 <button type="submit" className="button button--small" disabled={isPending}>
                   Save access
@@ -647,9 +649,9 @@ export function SessionAdminCenter({
             </div>
           </form>
 
-          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-5)" }}>
+          <div className="admin-pane__section">
             <form onSubmit={onSavePayoutRules}>
-              <div className="admin-pane__header" style={{ marginBottom: "var(--space-4)" }}>
+              <div className="admin-pane__header admin-pane__section-header">
                 <h3>Payouts</h3>
                 <div className="button-row">
                   <span className="status-pill">{totalPayoutPercent.toFixed(1)}%</span>
@@ -697,9 +699,9 @@ export function SessionAdminCenter({
             </form>
           </div>
 
-          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-5)" }}>
+          <div className="admin-pane__section">
             <form onSubmit={onSaveAnalysisSettings}>
-              <div className="admin-pane__header" style={{ marginBottom: "var(--space-4)" }}>
+              <div className="admin-pane__header admin-pane__section-header">
                 <h3>Analysis strategy</h3>
                 <button type="submit" className="button button--small" disabled={isPending}>
                   Save strategy
@@ -780,8 +782,8 @@ export function SessionAdminCenter({
             </label>
           </form>
 
-          <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-5)" }}>
-            <p className="eyebrow" style={{ marginBottom: "var(--space-3)" }}>Import history</p>
+          <div className="admin-pane__section">
+            <p className="eyebrow admin-pane__section-kicker">Import history</p>
             <div className="table-wrap">
               <table className="admin-table admin-table--dense">
                 <thead>
