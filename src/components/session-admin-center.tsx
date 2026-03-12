@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { PayoutRules, SessionAdminConfig } from "@/lib/types";
 import { titleCaseStage } from "@/lib/utils";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const payoutStages: Array<
   keyof Pick<PayoutRules, "roundOf64" | "roundOf32" | "sweet16" | "elite8" | "finalFour" | "champion">
@@ -403,6 +404,7 @@ export function SessionAdminCenter({
           <Link href="/admin" className="button button-secondary button--small">
             Back
           </Link>
+          <ThemeToggle />
           <span className="status-pill">{config.session.activeDataSource.name}</span>
           <span className="status-pill">
             {config.importRuns.length} import{config.importRuns.length === 1 ? "" : "s"}

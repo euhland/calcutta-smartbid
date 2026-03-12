@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { AdminCenterData, DataSource, PlatformUser, SyndicateCatalogEntry } from "@/lib/types";
 
 type AdminTab = "sessions" | "users" | "syndicates" | "data";
@@ -508,6 +509,7 @@ export function AdminCenter({
             <Link href="/admin/sessions/new" className="button button--small">
               New session
             </Link>
+            <ThemeToggle />
             <LogoutButton />
           </div>
         </header>

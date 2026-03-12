@@ -21,6 +21,7 @@ import {
   TeamProjection
 } from "@/lib/types";
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface DashboardShellProps {
   sessionId: string;
@@ -57,6 +58,7 @@ function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMem
 
   return role === "admin" ? "Operator" : "Viewer";
 }
+
 
 export function DashboardShell({
   sessionId,
@@ -493,6 +495,7 @@ export function DashboardShell({
               Admin center
             </button>
           ) : null}
+          <ThemeToggle />
           <button type="button" className="button button-ghost" onClick={() => void logout()}>
             Log out
           </button>
