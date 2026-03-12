@@ -45,11 +45,13 @@ export function buildBidRecommendation(
     expectedGrossPayout - currentBid - ownershipExposure.overlapScore * 850
   );
   const valueGap = roundCurrency(maxBid - currentBid);
+  const buyThreshold = Math.min(targetBid, maxBid);
+  const hasBudgetWindow = buyThreshold > 0 || maxBid > 0;
 
   let stoplight: BidRecommendation["stoplight"] = "pass";
-  if (currentBid <= targetBid && expectedNetValue > 0) {
+  if (hasBudgetWindow && buyThreshold > 0 && currentBid <= buyThreshold && expectedNetValue > 0) {
     stoplight = "buy";
-  } else if (currentBid <= maxBid && expectedNetValue >= -750) {
+  } else if (hasBudgetWindow && maxBid > 0 && currentBid <= maxBid && expectedNetValue >= -750) {
     stoplight = "caution";
   }
 
