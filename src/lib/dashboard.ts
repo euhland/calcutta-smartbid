@@ -3,6 +3,13 @@ import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import { AuctionDashboard, AuctionSession, StorageBackend, StoredAuctionSession } from "@/lib/types";
 
 function requireMothershipPerspective(session: AuctionSession) {
+  const persistedFocus =
+    session.syndicates.find((syndicate) => syndicate.id === session.focusSyndicateId) ?? null;
+
+  if (persistedFocus) {
+    return persistedFocus;
+  }
+
   const mothershipName = getConfiguredMothershipSyndicateName().trim().toLowerCase();
   const mothership =
     session.syndicates.find((syndicate) => syndicate.name.trim().toLowerCase() === mothershipName) ??

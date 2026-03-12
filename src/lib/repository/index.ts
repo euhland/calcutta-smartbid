@@ -478,7 +478,7 @@ class LocalSessionRepository implements SessionRepository {
       store.syndicateCatalog,
       input.catalogSyndicateIds
     );
-    session.focusSyndicateId = requireMothershipSyndicate(session.syndicates).id;
+    session.focusSyndicateId = requireSessionFocusSyndicate(session).id;
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
     await this.writeStore(store);
@@ -1203,7 +1203,7 @@ class SupabaseSessionRepository implements SessionRepository {
       refs.syndicateCatalog,
       input.catalogSyndicateIds
     );
-    session.focusSyndicateId = requireMothershipSyndicate(session.syndicates).id;
+    session.focusSyndicateId = requireSessionFocusSyndicate(session).id;
     session.syndicates = recalculateSyndicateValues(session);
     session.updatedAt = new Date().toISOString();
     await this.persistSessionMeta(session);
@@ -2027,6 +2027,19 @@ function requireMothershipSyndicate(syndicates: Syndicate[]) {
   }
 
   return mothership;
+}
+
+function requireSessionFocusSyndicate(
+  session: Pick<StoredAuctionSession, "focusSyndicateId" | "syndicates">
+) {
+  const persistedFocus =
+    session.syndicates.find((syndicate) => syndicate.id === session.focusSyndicateId) ?? null;
+
+  if (persistedFocus) {
+    return persistedFocus;
+  }
+
+  return requireMothershipSyndicate(session.syndicates);
 }
 
 function buildAccessMembers(
