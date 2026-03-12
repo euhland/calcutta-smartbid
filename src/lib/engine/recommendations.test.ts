@@ -1,5 +1,6 @@
 import { buildBidRecommendation, computeOwnershipExposure } from "@/lib/engine/recommendations";
 import { simulateAuctionField } from "@/lib/engine/simulation";
+import { buildSessionAnalysisSnapshot } from "@/lib/session-analysis";
 import { getDefaultFinalFourPairings, getDefaultPayoutRules, getMockProjections } from "@/lib/sample-data";
 import { AuctionSession } from "@/lib/types";
 
@@ -26,6 +27,10 @@ function buildSession(): AuctionSession {
       sharedCodeConfigured: true
     },
     payoutRules,
+    analysisSettings: {
+      targetTeamCount: 8,
+      maxSingleTeamPct: 22
+    },
     syndicates: [
       {
         id: "syn_focus",
@@ -86,10 +91,12 @@ describe("recommendations", () => {
     const session = buildSession();
     const focus = session.syndicates[0];
     const team = session.projections.find((projection) => projection.id === "alabama") ?? null;
-    const recommendation = buildBidRecommendation(session, team, focus);
+    const analysis = buildSessionAnalysisSnapshot(session, focus);
+    const recommendation = buildBidRecommendation(session, team, focus, analysis);
 
     expect(recommendation).not.toBeNull();
-    expect(recommendation?.recommendedMaxBid).toBeGreaterThan(0);
+    expect(recommendation?.maxBid).toBeGreaterThan(0);
+    expect(recommendation?.targetBid).toBeGreaterThan(0);
     expect(recommendation?.drivers).toHaveLength(2);
     expect(recommendation?.valueGap).toBeDefined();
   });
