@@ -86,7 +86,9 @@ export function DashboardShell({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analysisSearch, setAnalysisSearch] = useState("");
-  const [analysisTeamId, setAnalysisTeamId] = useState("");
+  const [analysisTeamId, setAnalysisTeamId] = useState(
+    dashboard.session.liveState.nominatedTeamId ?? ""
+  );
   const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
   const winnerSelectRef = useRef<HTMLSelectElement | null>(null);
@@ -1622,6 +1624,7 @@ function TeamCombobox({
         readOnly={!open}
         autoComplete="off"
         onFocus={handleFocus}
+        onClick={() => { if (!open) handleFocus(); }}
         onChange={(e) => {
           setSearch(e.target.value);
           setHighlightIndex(0);
