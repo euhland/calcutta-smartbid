@@ -1052,7 +1052,7 @@ kbd {
   min-height: 2.7rem;
   padding: 0.7rem 0.9rem;
   border-radius: 12px;
-  background: rgba(8, 13, 22, 0.76);
+  background: var(--bg-soft);
 }
 
 .admin-filter-input {
@@ -1075,7 +1075,7 @@ kbd {
   z-index: 1;
   padding: 0.75rem 0.7rem;
   border-bottom: 1px solid var(--line);
-  background: rgba(16, 24, 37, 0.98);
+  background: var(--panel);
   color: var(--muted);
   text-align: left;
   font: 600 0.75rem/1.2 var(--font-mono);
@@ -1130,7 +1130,7 @@ kbd {
   padding: 0.95rem 1rem;
   border: 1px solid var(--line);
   border-radius: 16px;
-  background: rgba(7, 12, 20, 0.54);
+  background: var(--bg-soft);
 }
 
 .admin-inline-grid,
@@ -1766,7 +1766,7 @@ kbd {
   padding: 0.62rem 0.7rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--line-strong);
-  background: rgba(8, 13, 22, 0.97);
+  background: var(--panel-strong);
   color: var(--muted-strong);
   box-shadow: var(--shadow);
   font-size: 0.76rem;
