@@ -59,6 +59,10 @@ function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMem
   return role === "admin" ? "Operator" : "Viewer";
 }
 
+function formatConfidenceBandLabel(confidenceBand: [number, number]) {
+  return `${formatCurrency(confidenceBand[0])} - ${formatCurrency(confidenceBand[1])}`;
+}
+
 
 export function DashboardShell({
   sessionId,
@@ -640,9 +644,7 @@ export function DashboardShell({
                       label="Sim confidence"
                       value={
                         recommendation
-                          ? `${formatCurrency(recommendation.confidenceBand[0])}-${formatCurrency(
-                              recommendation.confidenceBand[1]
-                            )}`
+                          ? formatConfidenceBandLabel(recommendation.confidenceBand)
                           : "--"
                       }
                     />
@@ -995,12 +997,67 @@ export function DashboardShell({
                         value={displayNullableNumber(analysisRow.q1Wins)}
                       />
                       <MetricCard
-                        label="Ranked wins"
-                        value={displayNullableNumber(analysisRow.rankedWins)}
+                        label="Q2 / Q3 / Q4 wins"
+                        value={`${displayNullableNumber(analysisRow.q2Wins)} / ${displayNullableNumber(analysisRow.q3Wins)} / ${displayNullableNumber(analysisRow.q4Wins)}`}
                       />
                       <MetricCard
-                        label="3PT / KenPom"
-                        value={`${displayNullablePercent(analysisRow.threePointPct)} / ${displayNullableNumber(analysisRow.kenpomRank)}`}
+                        label="Games / WAB / KenPom"
+                        value={`${displayNullableNumber(analysisRow.gamesPlayed)} / ${displayNullableNumber(analysisRow.winsAboveBubble)} / ${displayNullableNumber(analysisRow.kenpomRank)}`}
+                      />
+                    </div>
+
+                    <div className="metric-grid">
+                      <MetricCard
+                        label="3PT %"
+                        value={displayNullablePercent(analysisRow.threePointPct)}
+                      />
+                      <MetricCard
+                        label="3PT rate"
+                        value={displayNullablePercent(analysisRow.threePointRate)}
+                      />
+                      <MetricCard
+                        label="Opp 3PT rate"
+                        value={displayNullablePercent(analysisRow.opponentThreePointRate)}
+                      />
+                      <MetricCard
+                        label="eFG %"
+                        value={displayNullablePercent(analysisRow.effectiveFieldGoalPct)}
+                      />
+                      <MetricCard
+                        label="Opp eFG %"
+                        value={displayNullablePercent(analysisRow.opponentEffectiveFieldGoalPct)}
+                      />
+                      <MetricCard
+                        label="FT rate"
+                        value={displayNullablePercent(analysisRow.freeThrowRate)}
+                      />
+                      <MetricCard
+                        label="Opp FT rate"
+                        value={displayNullablePercent(analysisRow.opponentFreeThrowRate)}
+                      />
+                      <MetricCard
+                        label="TO %"
+                        value={displayNullablePercent(analysisRow.turnoverPct)}
+                      />
+                      <MetricCard
+                        label="Opp TO %"
+                        value={displayNullablePercent(analysisRow.opponentTurnoverPct)}
+                      />
+                      <MetricCard
+                        label="Off Reb %"
+                        value={displayNullablePercent(analysisRow.offensiveReboundPct)}
+                      />
+                      <MetricCard
+                        label="Def Reb %"
+                        value={displayNullablePercent(analysisRow.defensiveReboundPct)}
+                      />
+                      <MetricCard
+                        label="Off 2PT %"
+                        value={displayNullablePercent(analysisRow.offensiveTwoPointPct)}
+                      />
+                      <MetricCard
+                        label="Def 2PT %"
+                        value={displayNullablePercent(analysisRow.defensiveTwoPointPct)}
                       />
                     </div>
 
@@ -1059,7 +1116,7 @@ export function DashboardShell({
                         label="Sim confidence"
                         value={
                           selectedSimulation
-                            ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
+                            ? formatConfidenceBandLabel(selectedSimulation.confidenceBand)
                             : "--"
                         }
                       />
@@ -1686,5 +1743,6 @@ function displayNullablePercent(value: number | null) {
     return "--";
   }
 
-  return `${value.toFixed(1)}%`;
+  const normalized = Math.abs(value) <= 1 ? value * 100 : value;
+  return `${normalized.toFixed(1)}%`;
 }

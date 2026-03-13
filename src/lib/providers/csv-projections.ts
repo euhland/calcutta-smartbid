@@ -17,9 +17,22 @@ interface ParsedCsvRow {
   rating: number;
   tempo: number;
   wins: number | null;
+  gamesPlayed: number | null;
   rankedWins: number | null;
+  kenpomRank: number | null;
   threePointPct: number | null;
+  threePointRate: number | null;
+  opponentThreePointRate: number | null;
+  effectiveFieldGoalPct: number | null;
+  opponentEffectiveFieldGoalPct: number | null;
+  freeThrowRate: number | null;
+  opponentFreeThrowRate: number | null;
+  turnoverPct: number | null;
+  opponentTurnoverPct: number | null;
   offensiveReboundPct: number | null;
+  defensiveReboundPct: number | null;
+  offensiveTwoPointPct: number | null;
+  defensiveTwoPointPct: number | null;
   winsAboveBubble: number | null;
 }
 
@@ -37,9 +50,22 @@ export interface CsvAnalysisTeam {
   defense: number;
   tempo: number;
   wins: number | null;
+  gamesPlayed: number | null;
   rankedWins: number | null;
+  kenpomRank: number | null;
   threePointPct: number | null;
+  threePointRate: number | null;
+  opponentThreePointRate: number | null;
+  effectiveFieldGoalPct: number | null;
+  opponentEffectiveFieldGoalPct: number | null;
+  freeThrowRate: number | null;
+  opponentFreeThrowRate: number | null;
+  turnoverPct: number | null;
+  opponentTurnoverPct: number | null;
   offensiveReboundPct: number | null;
+  defensiveReboundPct: number | null;
+  offensiveTwoPointPct: number | null;
+  defensiveTwoPointPct: number | null;
   winsAboveBubble: number | null;
 }
 
@@ -149,9 +175,22 @@ export function buildCsvTeamAnalysis(
       defense: team.defense,
       tempo: team.tempo,
       wins: rankedRows[index]?.wins ?? null,
+      gamesPlayed: rankedRows[index]?.gamesPlayed ?? null,
       rankedWins: rankedRows[index]?.rankedWins ?? null,
+      kenpomRank: rankedRows[index]?.kenpomRank ?? index + 1,
       threePointPct: rankedRows[index]?.threePointPct ?? null,
+      threePointRate: rankedRows[index]?.threePointRate ?? null,
+      opponentThreePointRate: rankedRows[index]?.opponentThreePointRate ?? null,
+      effectiveFieldGoalPct: rankedRows[index]?.effectiveFieldGoalPct ?? null,
+      opponentEffectiveFieldGoalPct: rankedRows[index]?.opponentEffectiveFieldGoalPct ?? null,
+      freeThrowRate: rankedRows[index]?.freeThrowRate ?? null,
+      opponentFreeThrowRate: rankedRows[index]?.opponentFreeThrowRate ?? null,
+      turnoverPct: rankedRows[index]?.turnoverPct ?? null,
+      opponentTurnoverPct: rankedRows[index]?.opponentTurnoverPct ?? null,
       offensiveReboundPct: rankedRows[index]?.offensiveReboundPct ?? null,
+      defensiveReboundPct: rankedRows[index]?.defensiveReboundPct ?? null,
+      offensiveTwoPointPct: rankedRows[index]?.offensiveTwoPointPct ?? null,
+      defensiveTwoPointPct: rankedRows[index]?.defensiveTwoPointPct ?? null,
       winsAboveBubble: rankedRows[index]?.winsAboveBubble ?? null
     })),
     intelligence
@@ -283,24 +322,155 @@ function parseAndRankRows(csvText: string) {
     tempo: getRequiredHeaderIndex(headerLookup, "tempo", ["adjusted tempo"])
   };
 
+  const offensiveTwoPointPrimary = getOptionalHeaderIndex(headerLookup, [
+    "offensive two point percentage",
+    "offensive 2 point percentage",
+    "offensive 2pt percentage"
+  ]);
+  const offensiveTwoPointSecondary = getOptionalHeaderIndexAtOccurrence(headerLookup, [
+    "offensive two point percentage",
+    "offensive 2 point percentage",
+    "offensive 2pt percentage",
+    "offensive 2pt",
+    "off 2pt",
+    "off 2pt percentage"
+  ], 1);
+  const defensiveTwoPointPrimary = getOptionalHeaderIndex(headerLookup, [
+    "defensive two point percentage",
+    "opponent two point percentage",
+    "defensive 2 point percentage",
+    "opponent 2 point percentage",
+    "defensive 2pt percentage",
+    "opp 2pt percentage",
+    "opponent 2pt percentage"
+  ]);
+  const defensiveTwoPointSecondary = getOptionalHeaderIndexAtOccurrence(headerLookup, [
+    "defensive two point percentage",
+    "opponent two point percentage",
+    "defensive 2 point percentage",
+    "opponent 2 point percentage",
+    "defensive 2pt percentage",
+    "opp 2pt percentage",
+    "opponent 2pt percentage"
+  ], 1);
+  const explicitThreePointPct = getOptionalHeaderIndex(headerLookup, [
+    "offensive three point percentage",
+    "offensive 3 point percentage",
+    "offensive 3pt percentage",
+    "three point percentage",
+    "3 point percentage",
+    "3pt percentage",
+    "3pt",
+    "3pt%"
+  ]);
+
   const optionalColumns = {
-    wins: getOptionalHeaderIndex(headerLookup, ["wins"]),
+    wins: getOptionalHeaderIndex(headerLookup, ["wins", "w"]),
+    gamesPlayed: getOptionalHeaderIndex(headerLookup, ["games played", "games", "gp"]),
     rankedWins: getOptionalHeaderIndex(headerLookup, ["ranked wins"]),
-    threePointPct: getOptionalHeaderIndex(headerLookup, [
-      "offensive three point percentage",
-      "offensive 3 point percentage",
-      "offensive 3pt percentage",
-      "three point percentage",
-      // Some exports repeat this header text for the three-point column.
-      "offensive two point percentage"
+    kenpomRank: getOptionalHeaderIndex(headerLookup, [
+      "kenpom rank",
+      "ken pom rank",
+      "kenpom",
+      "ken pom",
+      "adj em rank",
+      "adj em",
+      "kenpom ranking"
+    ]),
+    threePointPct:
+      explicitThreePointPct ??
+      offensiveTwoPointSecondary ??
+      getOptionalHeaderIndex(headerLookup, [
+        "three point rate",
+        "3 point rate",
+        "3pt rate",
+        "3par",
+        "offensive 3 point rate",
+        "offensive 3pt rate"
+      ]),
+    threePointRate: getOptionalHeaderIndex(headerLookup, [
+      "three point rate",
+      "3 point rate",
+      "3pt rate",
+      "3par",
+      "offensive 3 point rate",
+      "offensive 3pt rate"
+    ]),
+    opponentThreePointRate: getOptionalHeaderIndex(headerLookup, [
+      "opponent 3 point rate",
+      "opponent three point rate",
+      "opponent 3pt rate",
+      "opponent three point percentage",
+      "opponent 3 point percentage",
+      "opponent 3pt percentage",
+      "opp 3pt rate",
+      "opp 3par"
+    ]),
+    effectiveFieldGoalPct: getOptionalHeaderIndex(headerLookup, [
+      "effective field goal percentage",
+      "effective field goal pct",
+      "efg percentage",
+      "efg pct",
+      "efg%"
+    ]),
+    opponentEffectiveFieldGoalPct: getOptionalHeaderIndex(headerLookup, [
+      "opponent effective field goal percentage",
+      "opponent effective field goal pct",
+      "opp effective field goal percentage",
+      "opp efg percentage",
+      "opponent efg%",
+      "opp efg%"
+    ]),
+    freeThrowRate: getOptionalHeaderIndex(headerLookup, [
+      "free throw rate",
+      "ftr",
+      "offensive free throw rate"
+    ]),
+    opponentFreeThrowRate: getOptionalHeaderIndex(headerLookup, [
+      "opponent free throw rate",
+      "opp free throw rate",
+      "opp ftr"
+    ]),
+    turnoverPct: getOptionalHeaderIndex(headerLookup, [
+      "turnover percentage",
+      "turnover percentage ",
+      "turnover pct",
+      "turnover%",
+      "to%",
+      "offensive turnover percentage"
+    ]),
+    opponentTurnoverPct: getOptionalHeaderIndex(headerLookup, [
+      "opponent turnover percentage",
+      "opp turnover percentage",
+      "opponent turnover pct",
+      "opp to%",
+      "opponent turnover%"
     ]),
     offensiveReboundPct: getOptionalHeaderIndex(headerLookup, [
       "offensive rebound percentage",
       "offensive rebounds",
       "off reb percentage",
-      "off rebounding percentage"
+      "off rebounding percentage",
+      "offensive rebounding percentage",
+      "orb%",
+      "off reb%"
     ]),
-    winsAboveBubble: getOptionalHeaderIndex(headerLookup, ["wins above bubble"])
+    defensiveReboundPct: getOptionalHeaderIndex(headerLookup, [
+      "defensive rebound percentage",
+      "defensive rebounds",
+      "def reb percentage",
+      "def rebounding percentage",
+      "defensive rebounding percentage",
+      "drb%",
+      "def reb%"
+    ]),
+    offensiveTwoPointPct: offensiveTwoPointPrimary,
+    defensiveTwoPointPct: defensiveTwoPointPrimary ?? defensiveTwoPointSecondary,
+    winsAboveBubble: getOptionalHeaderIndex(headerLookup, [
+      "wins above bubble",
+      "wab",
+      "wins over bubble"
+    ])
   };
 
   const parsedRows = rows
@@ -381,8 +551,22 @@ function buildAnalysisTeams(rankedRows: RankedCsvRow[], providerName: string): T
 function buildScouting(team: RankedCsvRow): TeamScoutingProfile {
   return {
     netRank: team.rank,
-    kenpomRank: team.rank,
+    kenpomRank: team.kenpomRank ?? team.rank,
+    gamesPlayed: team.gamesPlayed ?? undefined,
     threePointPct: team.threePointPct ?? undefined,
+    threePointRate: team.threePointRate ?? undefined,
+    opponentThreePointRate: team.opponentThreePointRate ?? undefined,
+    effectiveFieldGoalPct: team.effectiveFieldGoalPct ?? undefined,
+    opponentEffectiveFieldGoalPct: team.opponentEffectiveFieldGoalPct ?? undefined,
+    freeThrowRate: team.freeThrowRate ?? undefined,
+    opponentFreeThrowRate: team.opponentFreeThrowRate ?? undefined,
+    turnoverPct: team.turnoverPct ?? undefined,
+    opponentTurnoverPct: team.opponentTurnoverPct ?? undefined,
+    offensiveReboundPct: team.offensiveReboundPct ?? undefined,
+    defensiveReboundPct: team.defensiveReboundPct ?? undefined,
+    offensiveTwoPointPct: team.offensiveTwoPointPct ?? undefined,
+    defensiveTwoPointPct: team.defensiveTwoPointPct ?? undefined,
+    winsAboveBubble: team.winsAboveBubble ?? undefined,
     rankedWins: team.rankedWins ?? undefined,
     quadWins: team.winsAboveBubble === null ? undefined : inferQuadWins(team.winsAboveBubble),
     offenseStyle: describeOffense(team.offense, team.tempo),
@@ -437,9 +621,22 @@ function parseProjectionRow(
   },
   optionalColumns: {
     wins: number | null;
+    gamesPlayed: number | null;
     rankedWins: number | null;
+    kenpomRank: number | null;
     threePointPct: number | null;
+    threePointRate: number | null;
+    opponentThreePointRate: number | null;
+    effectiveFieldGoalPct: number | null;
+    opponentEffectiveFieldGoalPct: number | null;
+    freeThrowRate: number | null;
+    opponentFreeThrowRate: number | null;
+    turnoverPct: number | null;
+    opponentTurnoverPct: number | null;
     offensiveReboundPct: number | null;
+    defensiveReboundPct: number | null;
+    offensiveTwoPointPct: number | null;
+    defensiveTwoPointPct: number | null;
     winsAboveBubble: number | null;
   }
 ): ParsedCsvRow | null {
@@ -463,18 +660,70 @@ function parseProjectionRow(
       optionalColumns.wins === null
         ? null
         : parseNumber(getCell(row, optionalColumns.wins), { asInteger: true }),
+    gamesPlayed:
+      optionalColumns.gamesPlayed === null
+        ? null
+        : parseNumber(getCell(row, optionalColumns.gamesPlayed), { asInteger: true }),
     rankedWins:
       optionalColumns.rankedWins === null
         ? null
         : parseNumber(getCell(row, optionalColumns.rankedWins), { asInteger: true }),
+    kenpomRank:
+      optionalColumns.kenpomRank === null
+        ? null
+        : parseNumber(getCell(row, optionalColumns.kenpomRank), { asInteger: true }),
     threePointPct:
       optionalColumns.threePointPct === null
         ? null
-        : parseNumber(getCell(row, optionalColumns.threePointPct)),
+        : parsePercentLike(getCell(row, optionalColumns.threePointPct)),
+    threePointRate:
+      optionalColumns.threePointRate === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.threePointRate)),
+    opponentThreePointRate:
+      optionalColumns.opponentThreePointRate === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.opponentThreePointRate)),
+    effectiveFieldGoalPct:
+      optionalColumns.effectiveFieldGoalPct === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.effectiveFieldGoalPct)),
+    opponentEffectiveFieldGoalPct:
+      optionalColumns.opponentEffectiveFieldGoalPct === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.opponentEffectiveFieldGoalPct)),
+    freeThrowRate:
+      optionalColumns.freeThrowRate === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.freeThrowRate)),
+    opponentFreeThrowRate:
+      optionalColumns.opponentFreeThrowRate === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.opponentFreeThrowRate)),
+    turnoverPct:
+      optionalColumns.turnoverPct === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.turnoverPct)),
+    opponentTurnoverPct:
+      optionalColumns.opponentTurnoverPct === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.opponentTurnoverPct)),
     offensiveReboundPct:
       optionalColumns.offensiveReboundPct === null
         ? null
-        : parseNumber(getCell(row, optionalColumns.offensiveReboundPct)),
+        : parsePercentLike(getCell(row, optionalColumns.offensiveReboundPct)),
+    defensiveReboundPct:
+      optionalColumns.defensiveReboundPct === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.defensiveReboundPct)),
+    offensiveTwoPointPct:
+      optionalColumns.offensiveTwoPointPct === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.offensiveTwoPointPct)),
+    defensiveTwoPointPct:
+      optionalColumns.defensiveTwoPointPct === null
+        ? null
+        : parsePercentLike(getCell(row, optionalColumns.defensiveTwoPointPct)),
     winsAboveBubble:
       optionalColumns.winsAboveBubble === null
         ? null
@@ -533,11 +782,18 @@ function parseCsv(csvText: string) {
 }
 
 function buildHeaderLookup(headerRow: string[]) {
-  return new Map(headerRow.map((header, index) => [normalizeHeader(header), index]));
+  const lookup = new Map<string, number[]>();
+  headerRow.forEach((header, index) => {
+    const normalized = normalizeHeader(header);
+    const existing = lookup.get(normalized) ?? [];
+    existing.push(index);
+    lookup.set(normalized, existing);
+  });
+  return lookup;
 }
 
 function getRequiredHeaderIndex(
-  headerLookup: Map<string, number>,
+  headerLookup: Map<string, number[]>,
   label: string,
   aliases: string[]
 ) {
@@ -548,11 +804,22 @@ function getRequiredHeaderIndex(
   return index;
 }
 
-function getOptionalHeaderIndex(headerLookup: Map<string, number>, aliases: string[]) {
+function getOptionalHeaderIndex(
+  headerLookup: Map<string, number[]>,
+  aliases: string[]
+) {
+  return getOptionalHeaderIndexAtOccurrence(headerLookup, aliases, 0);
+}
+
+function getOptionalHeaderIndexAtOccurrence(
+  headerLookup: Map<string, number[]>,
+  aliases: string[],
+  occurrence: number
+) {
   for (const alias of aliases) {
-    const index = headerLookup.get(normalizeHeader(alias));
-    if (index !== undefined) {
-      return index;
+    const indices = headerLookup.get(normalizeHeader(alias));
+    if (indices && indices.length > occurrence) {
+      return indices[occurrence];
     }
   }
   return null;
@@ -590,6 +857,20 @@ function parseNumber(
 
   if (options?.asInteger) {
     return Math.round(parsed);
+  }
+
+  return parsed;
+}
+
+function parsePercentLike(value: string) {
+  const parsed = parseNumber(value);
+  if (parsed === null) {
+    return null;
+  }
+
+  // Normalize decimal-form rates (0.354) into percentage points (35.4).
+  if (Math.abs(parsed) <= 1) {
+    return parsed * 100;
   }
 
   return parsed;

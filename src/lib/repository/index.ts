@@ -877,18 +877,9 @@ class SupabaseSessionRepository implements SessionRepository {
 
     const platformUsers = mapPlatformUsers(usersResult.data);
     const baseProjections = sortProjections(
-      (((projectionsResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) => ({
-        id: String(row.id),
-        name: String(row.name),
-        shortName: String(row.short_name),
-        region: String(row.region),
-        seed: Number(row.seed),
-        rating: Number(row.rating),
-        offense: Number(row.offense),
-        defense: Number(row.defense),
-        tempo: Number(row.tempo),
-        source: String(row.source)
-      })) as TeamProjection[])
+      (((projectionsResult.data as Array<Record<string, unknown>> | null) ?? []).map((row) =>
+        mapTeamProjectionRow(row)
+      ) as TeamProjection[])
     );
 
     const overrides = Object.fromEntries(
@@ -1658,19 +1649,7 @@ class SupabaseSessionRepository implements SessionRepository {
       "team_projections",
       "session_id",
       session.id,
-      session.baseProjections.map((team) => ({
-        id: team.id,
-        session_id: session.id,
-        name: team.name,
-        short_name: team.shortName,
-        region: team.region,
-        seed: team.seed,
-        rating: team.rating,
-        offense: team.offense,
-        defense: team.defense,
-        tempo: team.tempo,
-        source: team.source
-      }))
+      session.baseProjections.map((team) => serializeTeamProjectionRow(session.id, team))
     );
     await replaceRows(
       client,
@@ -2600,6 +2579,100 @@ function mapSessionSyndicates(rows: Array<Record<string, unknown>> | null | unde
   })) as Syndicate[]) ?? []);
 }
 
+function mapTeamProjectionRow(row: Record<string, unknown>): TeamProjection {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    shortName: String(row.short_name),
+    region: String(row.region),
+    seed: Number(row.seed),
+    rating: Number(row.rating),
+    offense: Number(row.offense),
+    defense: Number(row.defense),
+    tempo: Number(row.tempo),
+    source: String(row.source),
+    scouting: deserializeTeamProjectionScouting(row)
+  };
+}
+
+function deserializeTeamProjectionScouting(
+  row: Record<string, unknown>
+): TeamProjection["scouting"] {
+  const netRank = finiteNumberOrUndefined(row.net_rank);
+  const kenpomRank = finiteNumberOrUndefined(row.kenpom_rank);
+  const threePointPct = finiteNumberOrUndefined(row.three_point_pct);
+  const rankedWins = finiteNumberOrUndefined(row.ranked_wins);
+  const quad1Wins = finiteNumberOrUndefined(row.quad1_wins);
+  const quad2Wins = finiteNumberOrUndefined(row.quad2_wins);
+  const quad3Wins = finiteNumberOrUndefined(row.quad3_wins);
+  const quad4Wins = finiteNumberOrUndefined(row.quad4_wins);
+  const atsWins = finiteNumberOrUndefined(row.ats_wins);
+  const atsLosses = finiteNumberOrUndefined(row.ats_losses);
+  const atsPushes = finiteNumberOrUndefined(row.ats_pushes);
+  const offenseStyle = stringOrUndefined(row.offense_style);
+  const defenseStyle = stringOrUndefined(row.defense_style);
+
+  const scouting: TeamProjection["scouting"] = {
+    netRank,
+    kenpomRank,
+    threePointPct,
+    rankedWins,
+    quadWins:
+      quad1Wins !== undefined &&
+      quad2Wins !== undefined &&
+      quad3Wins !== undefined &&
+      quad4Wins !== undefined
+        ? {
+            q1: Math.round(quad1Wins),
+            q2: Math.round(quad2Wins),
+            q3: Math.round(quad3Wins),
+            q4: Math.round(quad4Wins)
+          }
+        : undefined,
+    ats:
+      atsWins !== undefined && atsLosses !== undefined && atsPushes !== undefined
+        ? {
+            wins: Math.round(atsWins),
+            losses: Math.round(atsLosses),
+            pushes: Math.round(atsPushes)
+          }
+        : undefined,
+    offenseStyle,
+    defenseStyle
+  };
+
+  return Object.values(scouting).some((value) => value !== undefined) ? scouting : undefined;
+}
+
+function serializeTeamProjectionRow(sessionId: string, team: TeamProjection) {
+  return {
+    id: team.id,
+    session_id: sessionId,
+    name: team.name,
+    short_name: team.shortName,
+    region: team.region,
+    seed: team.seed,
+    rating: team.rating,
+    offense: team.offense,
+    defense: team.defense,
+    tempo: team.tempo,
+    net_rank: team.scouting?.netRank ?? null,
+    kenpom_rank: team.scouting?.kenpomRank ?? null,
+    three_point_pct: team.scouting?.threePointPct ?? null,
+    ranked_wins: team.scouting?.rankedWins ?? null,
+    quad1_wins: team.scouting?.quadWins?.q1 ?? null,
+    quad2_wins: team.scouting?.quadWins?.q2 ?? null,
+    quad3_wins: team.scouting?.quadWins?.q3 ?? null,
+    quad4_wins: team.scouting?.quadWins?.q4 ?? null,
+    ats_wins: team.scouting?.ats?.wins ?? null,
+    ats_losses: team.scouting?.ats?.losses ?? null,
+    ats_pushes: team.scouting?.ats?.pushes ?? null,
+    offense_style: team.scouting?.offenseStyle ?? null,
+    defense_style: team.scouting?.defenseStyle ?? null,
+    source: team.source
+  };
+}
+
 function countRowsBySession(rows: Array<Record<string, unknown>>) {
   return rows.reduce((counts, row) => {
     const sessionId = String(row.session_id);
@@ -2678,6 +2751,24 @@ function numberOrUndefined(value: unknown) {
     return undefined;
   }
   return Number(value);
+}
+
+function finiteNumberOrUndefined(value: unknown) {
+  const numeric = numberOrUndefined(value);
+  if (numeric === undefined || !Number.isFinite(numeric)) {
+    return undefined;
+  }
+
+  return numeric;
+}
+
+function stringOrUndefined(value: unknown) {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function sanitizeCsvPortfolioEntries(

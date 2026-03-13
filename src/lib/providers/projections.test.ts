@@ -21,6 +21,20 @@ describe("normalizeProjectionFeed", () => {
         scouting: {
           kenpomRank: 3,
           threePointPct: 38.4,
+          threePointRate: 41.7,
+          opponentThreePointRate: 34.9,
+          effectiveFieldGoalPct: 56.2,
+          opponentEffectiveFieldGoalPct: 48.5,
+          freeThrowRate: 36.1,
+          opponentFreeThrowRate: 28.4,
+          turnoverPct: 14.8,
+          opponentTurnoverPct: 18.6,
+          offensiveReboundPct: 34.4,
+          defensiveReboundPct: 72.5,
+          offensiveTwoPointPct: 55.7,
+          defensiveTwoPointPct: 46.8,
+          winsAboveBubble: 8.2,
+          gamesPlayed: 34,
           quadWins: { q1: 9, q2: 5, q3: 2, q4: 1 },
           ats: { wins: 18, losses: 11, pushes: 1 },
           offenseStyle: " Four-out spacing ",
@@ -45,6 +59,11 @@ describe("normalizeProjectionFeed", () => {
     expect(teams[0].region).toBe("East");
     expect(teams[0].scouting?.offenseStyle).toBe("Four-out spacing");
     expect(teams[0].scouting?.ats?.wins).toBe(18);
+    expect(teams[0].scouting?.threePointRate).toBe(41.7);
+    expect(teams[0].scouting?.effectiveFieldGoalPct).toBe(56.2);
+    expect(teams[0].scouting?.offensiveTwoPointPct).toBe(55.7);
+    expect(teams[0].scouting?.winsAboveBubble).toBe(8.2);
+    expect(teams[0].scouting?.gamesPlayed).toBe(34);
   });
 });
 

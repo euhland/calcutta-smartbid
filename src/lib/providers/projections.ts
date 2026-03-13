@@ -325,34 +325,63 @@ function normalizeScoutingProfile(
   }
 
   const normalized: TeamScoutingProfile = {
-    netRank: scouting.netRank ? Number(scouting.netRank) : undefined,
-    kenpomRank: scouting.kenpomRank ? Number(scouting.kenpomRank) : undefined,
-    threePointPct:
-      scouting.threePointPct !== undefined
-        ? Number(scouting.threePointPct)
-        : undefined,
-    rankedWins:
-      scouting.rankedWins !== undefined ? Number(scouting.rankedWins) : undefined,
+    netRank: toOptionalInteger(scouting.netRank),
+    kenpomRank: toOptionalInteger(scouting.kenpomRank),
+    gamesPlayed: toOptionalInteger(scouting.gamesPlayed),
+    threePointPct: toOptionalNumber(scouting.threePointPct),
+    threePointRate: toOptionalNumber(scouting.threePointRate),
+    opponentThreePointRate: toOptionalNumber(scouting.opponentThreePointRate),
+    effectiveFieldGoalPct: toOptionalNumber(scouting.effectiveFieldGoalPct),
+    opponentEffectiveFieldGoalPct: toOptionalNumber(scouting.opponentEffectiveFieldGoalPct),
+    freeThrowRate: toOptionalNumber(scouting.freeThrowRate),
+    opponentFreeThrowRate: toOptionalNumber(scouting.opponentFreeThrowRate),
+    turnoverPct: toOptionalNumber(scouting.turnoverPct),
+    opponentTurnoverPct: toOptionalNumber(scouting.opponentTurnoverPct),
+    offensiveReboundPct: toOptionalNumber(scouting.offensiveReboundPct),
+    defensiveReboundPct: toOptionalNumber(scouting.defensiveReboundPct),
+    offensiveTwoPointPct: toOptionalNumber(scouting.offensiveTwoPointPct),
+    defensiveTwoPointPct: toOptionalNumber(scouting.defensiveTwoPointPct),
+    winsAboveBubble: toOptionalNumber(scouting.winsAboveBubble),
+    rankedWins: toOptionalInteger(scouting.rankedWins),
     quadWins: scouting.quadWins
       ? {
-          q1: Number(scouting.quadWins.q1),
-          q2: Number(scouting.quadWins.q2),
-          q3: Number(scouting.quadWins.q3),
-          q4: Number(scouting.quadWins.q4)
-        }
+        q1: Number(scouting.quadWins.q1),
+        q2: Number(scouting.quadWins.q2),
+        q3: Number(scouting.quadWins.q3),
+        q4: Number(scouting.quadWins.q4)
+      }
       : undefined,
     ats: scouting.ats
       ? {
-          wins: Number(scouting.ats.wins),
-          losses: Number(scouting.ats.losses),
-          pushes: Number(scouting.ats.pushes)
-        }
+        wins: Number(scouting.ats.wins),
+        losses: Number(scouting.ats.losses),
+        pushes: Number(scouting.ats.pushes)
+      }
       : undefined,
-    offenseStyle: scouting.offenseStyle?.trim() || undefined,
-    defenseStyle: scouting.defenseStyle?.trim() || undefined
+    offenseStyle: toOptionalString(scouting.offenseStyle),
+    defenseStyle: toOptionalString(scouting.defenseStyle)
   };
 
   return Object.values(normalized).some((value) => value !== undefined)
     ? normalized
     : undefined;
+}
+
+function toOptionalNumber(value: number | undefined) {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function toOptionalInteger(value: number | undefined) {
+  const numeric = toOptionalNumber(value);
+  return numeric === undefined ? undefined : Math.round(numeric);
+}
+
+function toOptionalString(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
 }

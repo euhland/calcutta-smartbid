@@ -75,7 +75,21 @@ export interface TeamAtsRecord {
 export interface TeamScoutingProfile {
   netRank?: number;
   kenpomRank?: number;
+  gamesPlayed?: number;
   threePointPct?: number;
+  threePointRate?: number;
+  opponentThreePointRate?: number;
+  effectiveFieldGoalPct?: number;
+  opponentEffectiveFieldGoalPct?: number;
+  freeThrowRate?: number;
+  opponentFreeThrowRate?: number;
+  turnoverPct?: number;
+  opponentTurnoverPct?: number;
+  offensiveReboundPct?: number;
+  defensiveReboundPct?: number;
+  offensiveTwoPointPct?: number;
+  defensiveTwoPointPct?: number;
+  winsAboveBubble?: number;
   rankedWins?: number;
   quadWins?: TeamQuadWins;
   ats?: TeamAtsRecord;
@@ -125,8 +139,22 @@ export interface AnalysisRankingRow {
   q2Wins: number | null;
   q3Wins: number | null;
   q4Wins: number | null;
+  gamesPlayed: number | null;
+  winsAboveBubble: number | null;
   rankedWins: number | null;
   threePointPct: number | null;
+  threePointRate: number | null;
+  opponentThreePointRate: number | null;
+  effectiveFieldGoalPct: number | null;
+  opponentEffectiveFieldGoalPct: number | null;
+  freeThrowRate: number | null;
+  opponentFreeThrowRate: number | null;
+  turnoverPct: number | null;
+  opponentTurnoverPct: number | null;
+  offensiveReboundPct: number | null;
+  defensiveReboundPct: number | null;
+  offensiveTwoPointPct: number | null;
+  defensiveTwoPointPct: number | null;
   kenpomRank: number | null;
   atsRecord: string | null;
   atsWinPct: number | null;
@@ -141,8 +169,22 @@ export interface AnalysisFieldAverages {
   q2Wins: number | null;
   q3Wins: number | null;
   q4Wins: number | null;
+  gamesPlayed: number | null;
+  winsAboveBubble: number | null;
   rankedWins: number | null;
   threePointPct: number | null;
+  threePointRate: number | null;
+  opponentThreePointRate: number | null;
+  effectiveFieldGoalPct: number | null;
+  opponentEffectiveFieldGoalPct: number | null;
+  freeThrowRate: number | null;
+  opponentFreeThrowRate: number | null;
+  turnoverPct: number | null;
+  opponentTurnoverPct: number | null;
+  offensiveReboundPct: number | null;
+  defensiveReboundPct: number | null;
+  offensiveTwoPointPct: number | null;
+  defensiveTwoPointPct: number | null;
   kenpomRank: number | null;
   atsWinPct: number | null;
 }
@@ -566,7 +608,21 @@ export const teamAtsRecordSchema = z.object({
 export const teamScoutingProfileSchema = z.object({
   netRank: z.number().int().positive().optional(),
   kenpomRank: z.number().int().positive().optional(),
+  gamesPlayed: z.number().int().positive().optional(),
   threePointPct: z.number().min(0).max(100).optional(),
+  threePointRate: z.number().min(0).max(100).optional(),
+  opponentThreePointRate: z.number().min(0).max(100).optional(),
+  effectiveFieldGoalPct: z.number().min(0).max(100).optional(),
+  opponentEffectiveFieldGoalPct: z.number().min(0).max(100).optional(),
+  freeThrowRate: z.number().min(0).max(100).optional(),
+  opponentFreeThrowRate: z.number().min(0).max(100).optional(),
+  turnoverPct: z.number().min(0).max(100).optional(),
+  opponentTurnoverPct: z.number().min(0).max(100).optional(),
+  offensiveReboundPct: z.number().min(0).max(100).optional(),
+  defensiveReboundPct: z.number().min(0).max(100).optional(),
+  offensiveTwoPointPct: z.number().min(0).max(100).optional(),
+  defensiveTwoPointPct: z.number().min(0).max(100).optional(),
+  winsAboveBubble: z.number().optional(),
   rankedWins: z.number().int().nonnegative().optional(),
   quadWins: teamQuadWinsSchema.optional(),
   ats: teamAtsRecordSchema.optional(),

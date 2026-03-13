@@ -124,4 +124,79 @@ describe("buildTeamIntelligence", () => {
     expect(selected).not.toBeNull();
     expect(selected?.row.risks).toContain("Limited scouting data increases uncertainty");
   });
+
+  it("surfaces concise peer-comparison strengths for standout profile stats", () => {
+    const peerTeams: TeamProjection[] = [
+      {
+        id: "houston-like",
+        name: "Houston Like",
+        shortName: "HOU",
+        region: "South",
+        seed: 1,
+        rating: 92,
+        offense: 121,
+        defense: 93,
+        tempo: 66,
+        source: "test",
+        scouting: {
+          kenpomRank: 4,
+          threePointPct: 37.2,
+          effectiveFieldGoalPct: 56.2,
+          offensiveReboundPct: 35.5,
+          offensiveTwoPointPct: 57.4
+        }
+      },
+      {
+        id: "peer-a",
+        name: "Peer A",
+        shortName: "PA",
+        region: "East",
+        seed: 3,
+        rating: 91.5,
+        offense: 119.8,
+        defense: 94.1,
+        tempo: 66.4,
+        source: "test",
+        scouting: {
+          kenpomRank: 7,
+          threePointPct: 36.6,
+          effectiveFieldGoalPct: 54.9,
+          offensiveReboundPct: 30.4,
+          offensiveTwoPointPct: 53.4
+        }
+      },
+      {
+        id: "peer-b",
+        name: "Peer B",
+        shortName: "PB",
+        region: "West",
+        seed: 4,
+        rating: 90.9,
+        offense: 119.1,
+        defense: 95.3,
+        tempo: 65.9,
+        source: "test",
+        scouting: {
+          kenpomRank: 10,
+          threePointPct: 35.9,
+          effectiveFieldGoalPct: 54.1,
+          offensiveReboundPct: 29.7,
+          offensiveTwoPointPct: 52.8
+        }
+      }
+    ];
+
+    const intelligence = buildTeamIntelligence(peerTeams, "houston-like");
+    const selected = intelligence.selected;
+
+    expect(selected).not.toBeNull();
+    expect(
+      selected?.row.strengths.some((entry) => entry.includes("Offensive rebounding edge"))
+    ).toBe(true);
+    expect(
+      selected?.row.strengths.some((entry) =>
+        entry.includes("Interior scoring efficiency edge")
+      )
+    ).toBe(true);
+  });
 });

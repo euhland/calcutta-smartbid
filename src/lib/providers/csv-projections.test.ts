@@ -100,4 +100,123 @@ describe("buildCsvProjectionFeed", () => {
     expect(plan.investableCash).toBe(10000);
     expect(plan.reservedCash).toBe(0);
   });
+
+  it("parses extended efficiency columns for analysis stats", () => {
+    const csv = [
+      buildCsvRow([
+        "Team Name",
+        "Adjusted Offense Efficiency",
+        "Adjust Defense Efficiency",
+        "Power Rating - Chance of Beating Average D1 Team",
+        "Wins",
+        "Games Played",
+        "Effective Field Goal Percentage",
+        "Opponent Effective Field Goal Percentage",
+        "Free Throw Rate",
+        "Opponent Free Throw Rate",
+        "Turnover Percentage",
+        "Opponent Turnover Percentage",
+        "Offensive Rebound Percentage",
+        "Defensive Rebound Percentage",
+        "Adjusted Tempo",
+        "Offensive Two Point Percentage",
+        "Defensive Two Point Percentage",
+        "Three Point Rate",
+        "Opponent 3 Point Rate",
+        "Wins Above Bubble"
+      ]),
+      buildCsvRow([
+        "Alpha",
+        "121.2",
+        "93.4",
+        "0.978",
+        "29",
+        "33",
+        "56.8",
+        "48.7",
+        "38.1",
+        "29.2",
+        "15.4",
+        "19.7",
+        "33.2",
+        "72.4",
+        "69.5",
+        "55.1",
+        "47.2",
+        "42.8",
+        "34.5",
+        "7.1"
+      ]),
+      buildCsvRow([
+        "Beta",
+        "117.1",
+        "97.2",
+        "0.932",
+        "24",
+        "33",
+        "53.9",
+        "50.9",
+        "33.7",
+        "32.5",
+        "16.9",
+        "17.8",
+        "29.5",
+        "69.9",
+        "67.2",
+        "52.8",
+        "49.3",
+        "37.2",
+        "36.4",
+        "3.8"
+      ])
+    ].join("\n");
+
+    const analysis = buildCsvTeamAnalysis(csv, "csv-test");
+    const topTeam = analysis.teams.find((team) => team.name === "Alpha");
+
+    expect(topTeam).toBeDefined();
+    expect(topTeam?.threePointRate).toBeCloseTo(42.8);
+    expect(topTeam?.offensiveReboundPct).toBeCloseTo(33.2);
+    expect(topTeam?.offensiveTwoPointPct).toBeCloseTo(55.1);
+    expect(topTeam?.kenpomRank).toBe(1);
+  });
+
+  it("normalizes decimal-form percentages into percentage points", () => {
+    const csv = [
+      buildCsvRow([
+        "Team Name",
+        "Adjusted Offense Efficiency",
+        "Adjust Defense Efficiency",
+        "Power Rating - Chance of Beating Average D1 Team",
+        "Adjusted Tempo",
+        "Offensive Three Point Percentage",
+        "Three Point Rate",
+        "Effective Field Goal Percentage",
+        "Offensive Rebound Percentage",
+        "Offensive Two Point Percentage"
+      ]),
+      buildCsvRow([
+        "Alpha",
+        "121.2",
+        "93.4",
+        "0.978",
+        "69.5",
+        "0.387",
+        "0.446",
+        "0.561",
+        "0.342",
+        "0.548"
+      ])
+    ].join("\n");
+
+    const analysis = buildCsvTeamAnalysis(csv, "csv-test");
+    const team = analysis.teams.find((candidate) => candidate.name === "Alpha");
+
+    expect(team).toBeDefined();
+    expect(team?.threePointPct).toBeCloseTo(38.7);
+    expect(team?.threePointRate).toBeCloseTo(44.6);
+    expect(team?.effectiveFieldGoalPct).toBeCloseTo(56.1);
+    expect(team?.offensiveReboundPct).toBeCloseTo(34.2);
+    expect(team?.offensiveTwoPointPct).toBeCloseTo(54.8);
+  });
 });
