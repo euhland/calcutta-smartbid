@@ -737,7 +737,7 @@ kbd {
 
 .decision-strip,
 .metric-grid {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin-top: 1.2rem;
 }
 
@@ -773,6 +773,10 @@ kbd {
   margin-top: 0.5rem;
   font-size: 1.5rem;
   letter-spacing: -0.03em;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 
 .callout-panel p {
@@ -789,10 +793,15 @@ kbd {
 
 .metric-card {
   padding: 1rem;
+  min-width: 0;
 }
 
 .metric-card--compact strong {
   font-size: 1.2rem;
+}
+
+.metric-card--long-value strong {
+  font-size: clamp(1.1rem, 1.45vw, 1.3rem);
 }
 
 .detail-grid {

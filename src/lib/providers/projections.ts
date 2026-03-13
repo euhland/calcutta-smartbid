@@ -10,7 +10,7 @@ import {
 } from "@/lib/types";
 import { buildCsvProjectionFeed } from "@/lib/providers/csv-projections";
 import { getMockProjections } from "@/lib/sample-data";
-import { uniqueBy } from "@/lib/utils";
+import { clamp, uniqueBy } from "@/lib/utils";
 import { z } from "zod";
 
 const rawProjectionSchema = z.object({
@@ -170,12 +170,55 @@ export function parseProjectionCsv(csvContent: string, provider: string) {
   }
 
   const headers = rows[0].map((value) => value.trim());
+  const normalizedHeaders = headers.map((header) => normalizeCsvHeader(header));
   const missingHeaders = requiredCsvHeaders.filter((header) => !headers.includes(header));
   if (missingHeaders.length > 0) {
     throw new Error(`CSV import is missing headers: ${missingHeaders.join(", ")}.`);
   }
 
   const indices = Object.fromEntries(headers.map((header, index) => [header, index]));
+  const scoutingColumns = {
+    netRank: findOptionalCsvColumnIndex(normalizedHeaders, ["net rank", "netrank"]),
+    kenpomRank: findOptionalCsvColumnIndex(normalizedHeaders, [
+      "kenpom rank",
+      "kenpomrank",
+      "kenpom"
+    ]),
+    rankedWins: findOptionalCsvColumnIndex(normalizedHeaders, ["ranked wins", "rankedwins"]),
+    threePointPct: findOptionalCsvColumnIndex(normalizedHeaders, [
+      "offensive three point percentage",
+      "offensive 3 point percentage",
+      "offensive 3pt percentage",
+      "three point percentage",
+      "3pt percentage",
+      "3pt%",
+      "3 point percentage"
+    ]),
+    q1Wins: findOptionalCsvColumnIndex(normalizedHeaders, [
+      "quadrant 1 wins",
+      "quad 1 wins",
+      "q1 wins"
+    ]),
+    q2Wins: findOptionalCsvColumnIndex(normalizedHeaders, [
+      "quadrant 2 wins",
+      "quad 2 wins",
+      "q2 wins"
+    ]),
+    q3Wins: findOptionalCsvColumnIndex(normalizedHeaders, [
+      "quadrant 3 wins",
+      "quad 3 wins",
+      "q3 wins"
+    ]),
+    q4Wins: findOptionalCsvColumnIndex(normalizedHeaders, [
+      "quadrant 4 wins",
+      "quad 4 wins",
+      "q4 wins"
+    ]),
+    winsAboveBubble: findOptionalCsvColumnIndex(normalizedHeaders, [
+      "wins above bubble",
+      "winsabovebubble"
+    ])
+  };
   const teams = rows.slice(1).filter((row) => row.some((value) => value.trim() !== ""));
   return normalizeProjectionFeed(
     provider,
@@ -188,7 +231,8 @@ export function parseProjectionCsv(csvContent: string, provider: string) {
       rating: Number(row[indices.rating] ?? "0"),
       offense: Number(row[indices.offense] ?? "0"),
       defense: Number(row[indices.defense] ?? "0"),
-      tempo: Number(row[indices.tempo] ?? "0")
+      tempo: Number(row[indices.tempo] ?? "0"),
+      scouting: parseCsvScoutingProfile(row, scoutingColumns)
     }))
   );
 }
@@ -240,6 +284,90 @@ function parseCsvRows(content: string) {
   }
 
   return rows;
+}
+
+function normalizeCsvHeader(header: string) {
+  return header.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function findOptionalCsvColumnIndex(headers: string[], aliases: string[]) {
+  return headers.findIndex((header) => aliases.includes(header));
+}
+
+function parseCsvScoutingProfile(
+  row: string[],
+  columns: {
+    netRank: number;
+    kenpomRank: number;
+    rankedWins: number;
+    threePointPct: number;
+    q1Wins: number;
+    q2Wins: number;
+    q3Wins: number;
+    q4Wins: number;
+    winsAboveBubble: number;
+  }
+): TeamScoutingProfile | undefined {
+  const netRank = parseOptionalCsvNumber(row, columns.netRank, true);
+  const explicitKenpomRank = parseOptionalCsvNumber(row, columns.kenpomRank, true);
+  const rankedWins = parseOptionalCsvNumber(row, columns.rankedWins, true);
+  const threePointPct = parseOptionalCsvNumber(row, columns.threePointPct, false);
+  const q1Wins = parseOptionalCsvNumber(row, columns.q1Wins, true);
+  const q2Wins = parseOptionalCsvNumber(row, columns.q2Wins, true);
+  const q3Wins = parseOptionalCsvNumber(row, columns.q3Wins, true);
+  const q4Wins = parseOptionalCsvNumber(row, columns.q4Wins, true);
+  const winsAboveBubble = parseOptionalCsvNumber(row, columns.winsAboveBubble, false);
+
+  const quadWins =
+    q1Wins !== undefined && q2Wins !== undefined && q3Wins !== undefined && q4Wins !== undefined
+      ? {
+          q1: q1Wins,
+          q2: q2Wins,
+          q3: q3Wins,
+          q4: q4Wins
+        }
+      : winsAboveBubble !== undefined
+        ? inferQuadWins(winsAboveBubble)
+        : undefined;
+
+  const scouting: TeamScoutingProfile = {
+    netRank,
+    kenpomRank: explicitKenpomRank ?? netRank,
+    rankedWins,
+    threePointPct,
+    quadWins
+  };
+
+  return Object.values(scouting).some((value) => value !== undefined) ? scouting : undefined;
+}
+
+function parseOptionalCsvNumber(row: string[], index: number, asInteger: boolean) {
+  if (index < 0) {
+    return undefined;
+  }
+
+  const raw = row[index]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  const normalized = raw.endsWith("%") ? raw.slice(0, -1).trim() : raw;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+
+  return asInteger ? Math.round(parsed) : parsed;
+}
+
+function inferQuadWins(winsAboveBubble: number) {
+  const signal = winsAboveBubble + 10;
+  return {
+    q1: clamp(Math.round(signal / 2), 0, 12),
+    q2: clamp(Math.round((signal + 4) / 3), 0, 10),
+    q3: clamp(Math.round((signal + 8) / 4), 0, 10),
+    q4: clamp(Math.round((signal + 12) / 5), 0, 10)
+  };
 }
 
 export function normalizeProjectionFeed(provider: string, teams: RawProjection[]): TeamProjection[] {
