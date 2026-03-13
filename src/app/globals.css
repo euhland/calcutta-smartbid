@@ -1249,6 +1249,69 @@ kbd {
   justify-content: flex-end;
 }
 
+.admin-access-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.admin-access-users form,
+.admin-access-rail {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.admin-access-toolbar {
+  justify-content: space-between;
+}
+
+.admin-access-toolbar__filters,
+.admin-access-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.admin-access-toolbar__filters {
+  flex: 1 1 24rem;
+}
+
+.admin-access-toolbar__filters .admin-filter-input {
+  flex: 1 1 16rem;
+  width: auto;
+}
+
+.admin-access-toolbar__filters .admin-filter-select {
+  width: auto;
+  min-width: 10rem;
+}
+
+.admin-access-toolbar__actions {
+  justify-content: flex-end;
+}
+
+.admin-access-file-input {
+  display: none;
+}
+
+.admin-access-rail {
+  position: sticky;
+  top: 1rem;
+}
+
+.admin-access-rail__form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.admin-access-rail .secret-shell__value {
+  width: 100%;
+  justify-content: center;
+  overflow-wrap: anywhere;
+}
+
 .admin-filter-input,
 .admin-filter-select {
   min-height: 2.7rem;
@@ -1687,6 +1750,19 @@ kbd {
   .admin-filter-input,
   .admin-filter-select {
     width: 100%;
+  }
+
+  .admin-access-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-access-toolbar__filters,
+  .admin-access-toolbar__actions {
+    width: 100%;
+  }
+
+  .admin-access-rail {
+    position: static;
   }
 
   .minimal-landing {
