@@ -2,18 +2,41 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition
+} from "react";
+import { accessImportSampleCsv } from "@/lib/access-import";
 import { PayoutRules, SessionAdminConfig } from "@/lib/types";
-import { titleCaseStage } from "@/lib/utils";
+import { formatCurrency, titleCaseStage } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const payoutStages: Array<
   keyof Pick<PayoutRules, "roundOf64" | "roundOf32" | "sweet16" | "elite8" | "finalFour" | "champion">
 > = ["roundOf64", "roundOf32", "sweet16", "elite8", "finalFour", "champion"];
 
+type SessionTab = "settings" | "access" | "syndicates" | "data" | "lifecycle";
+
 interface SessionAdminCenterProps {
   initialConfig: SessionAdminConfig;
   mothershipSyndicateName: string;
+}
+
+function formatDollarInput(value: number) {
+  return formatCurrency(Math.max(0, value));
+}
+
+function parseDollarInput(value: string) {
+  const digits = value.replace(/[^\d]/g, "");
+  if (!digits) {
+    return 0;
+  }
+
+  return Number(digits);
 }
 
 function formatDateTime(value: string) {
@@ -34,10 +57,12 @@ export function SessionAdminCenter({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SessionTab>("settings");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
-  const [showCurrentCode, setShowCurrentCode] = useState(false);
   const [sharedAccessCode, setSharedAccessCode] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<"all" | "admin" | "viewer">("all");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>(
     initialConfig.accessMembers.map((member) => member.platformUserId ?? "").filter(Boolean)
   );
@@ -55,14 +80,28 @@ export function SessionAdminCenter({
   );
   const [sourceKey, setSourceKey] = useState(initialConfig.session.activeDataSource.key);
   const [payoutRules, setPayoutRules] = useState(initialConfig.session.payoutRules);
+  const [projectedPotInput, setProjectedPotInput] = useState(
+    formatDollarInput(initialConfig.session.payoutRules.projectedPot)
+  );
   const [analysisSettings, setAnalysisSettings] = useState(
     initialConfig.session.analysisSettings
   );
+  const accessCsvInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeUsers = useMemo(
     () => config.platformUsers.filter((user) => user.active),
     [config.platformUsers]
   );
+  const filteredUsers = useMemo(() => {
+    const query = userSearch.trim().toLowerCase();
+    return activeUsers.filter((user) => {
+      const matchesSearch =
+        !query || [user.name, user.email].join(" ").toLowerCase().includes(query);
+      const role = userRoles[user.id] ?? "viewer";
+      const matchesRole = userRoleFilter === "all" || role === userRoleFilter;
+      return matchesSearch && matchesRole;
+    });
+  }, [activeUsers, userRoleFilter, userRoles, userSearch]);
   const activeSyndicates = useMemo(
     () => config.syndicateCatalog.filter((entry) => entry.active),
     [config.syndicateCatalog]
@@ -85,6 +124,13 @@ export function SessionAdminCenter({
     () => payoutStages.reduce((total, stage) => total + payoutRules[stage], 0),
     [payoutRules]
   );
+  const projectedMothershipBudget = useMemo(
+    () =>
+      selectedSyndicateIds.length > 0
+        ? Math.round(payoutRules.projectedPot / selectedSyndicateIds.length)
+        : 0,
+    [payoutRules.projectedPot, selectedSyndicateIds.length]
+  );
 
   useEffect(() => {
     setSelectedUserIds(
@@ -104,12 +150,9 @@ export function SessionAdminCenter({
     );
     setSourceKey(config.session.activeDataSource.key);
     setPayoutRules(config.session.payoutRules);
+    setProjectedPotInput(formatDollarInput(config.session.payoutRules.projectedPot));
     setAnalysisSettings(config.session.analysisSettings);
   }, [config]);
-
-  useEffect(() => {
-    setShowCurrentCode(false);
-  }, [config.currentSharedAccessCode]);
 
   async function refreshConfig() {
     const response = await fetch(`/api/admin/sessions/${config.session.id}/config`, {
@@ -213,7 +256,6 @@ export function SessionAdminCenter({
           "Shared access code rotated."
         );
         setSharedAccessCode("");
-        setShowCurrentCode(false);
       } catch (submitError) {
         setError(
           submitError instanceof Error
@@ -236,6 +278,60 @@ export function SessionAdminCenter({
     } catch {
       setError("Unable to copy the shared access code.");
     }
+  }
+
+  async function onCopyJoinLink() {
+    if (!config.currentSharedAccessCode) {
+      return;
+    }
+
+    try {
+      const url = new URL("/", window.location.origin);
+      url.searchParams.set("code", config.currentSharedAccessCode);
+      await navigator.clipboard.writeText(url.toString());
+      setError(null);
+      setNotice("Join link copied.");
+    } catch {
+      setError("Unable to copy the join link.");
+    }
+  }
+
+  function onDownloadSampleCsv() {
+    const blob = new Blob([accessImportSampleCsv], { type: "text/csv;charset=utf-8" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = "session-access-sample.csv";
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+  }
+
+  function onImportUsersCsv(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    startTransition(async () => {
+      try {
+        const csvContent = await file.text();
+        await submitJson(
+          `/api/admin/sessions/${config.session.id}/access/import`,
+          "POST",
+          { csvContent },
+          "Users imported into session access."
+        );
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Unable to import session access users."
+        );
+      } finally {
+        if (accessCsvInputRef.current) {
+          accessCsvInputRef.current.value = "";
+        }
+      }
+    });
   }
 
   function onSaveSyndicates(event: FormEvent<HTMLFormElement>) {
@@ -394,10 +490,10 @@ export function SessionAdminCenter({
   }
 
   return (
-    <div className="admin-form-layout">
+    <div className="admin-shell">
       <header className="surface-card admin-form-header">
         <div className="admin-form-header__copy">
-          <p className="eyebrow">Session</p>
+          <p className="eyebrow">mothership smartbid™</p>
           <h1>{config.session.name}</h1>
         </div>
         <div className="admin-form-header__actions">
@@ -415,131 +511,197 @@ export function SessionAdminCenter({
           >
             Open board
           </Link>
-          <Link
-            href={`/session/${config.session.id}?view=analysis`}
-            className="button button-ghost button--small"
-          >
-            Open analysis
-          </Link>
         </div>
       </header>
 
       {notice ? <p className="notice-text">{notice}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
 
-      <div className="admin-settings-grid">
-        <section className="surface-card admin-form-section">
-          <form className="admin-section-form" onSubmit={onRotateCode}>
-            <div className="admin-form-section__heading">
-              <h2>Login</h2>
-              <button type="submit" className="button button--small" disabled={isPending}>
-                Rotate code
-              </button>
+      <nav className="admin-tabbar" aria-label="Session admin">
+        {(
+          [
+            ["settings", "Settings"],
+            ["access", "Access"],
+            ["syndicates", "Syndicates"],
+            ["data", "Data"],
+            ["lifecycle", "Lifecycle"]
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            className={
+              activeTab === key ? "workspace-tab workspace-tab--active" : "workspace-tab"
+            }
+            onClick={() => setActiveTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {activeTab === "access" ? (
+        <section className="admin-access-layout">
+          <article className="surface-card admin-pane admin-access-users">
+            <form onSubmit={onSaveAccess}>
+              <div className="admin-pane__header admin-pane__section-header">
+                <h2>Users</h2>
+                <div className="button-row">
+                  <span className="status-pill">{selectedUserIds.length} selected</span>
+                  <button type="submit" className="button button--small" disabled={isPending}>
+                    Save access
+                  </button>
+                </div>
+              </div>
+              <div className="admin-pane__toolbar admin-access-toolbar">
+                <div className="admin-access-toolbar__filters">
+                  <input
+                    className="admin-filter-input"
+                    type="search"
+                    value={userSearch}
+                    onChange={(event) => setUserSearch(event.target.value)}
+                    placeholder="Name or email…"
+                  />
+                  <select
+                    className="admin-filter-select"
+                    value={userRoleFilter}
+                    onChange={(event) =>
+                      setUserRoleFilter(event.target.value as "all" | "admin" | "viewer")
+                    }
+                  >
+                    <option value="all">All roles</option>
+                    <option value="admin">Operators</option>
+                    <option value="viewer">Viewers</option>
+                  </select>
+                </div>
+                <div className="admin-access-toolbar__actions">
+                  <button
+                    type="button"
+                    className="button button-ghost button--small"
+                    onClick={onDownloadSampleCsv}
+                  >
+                    Download sample CSV
+                  </button>
+                  <input
+                    ref={accessCsvInputRef}
+                    className="admin-access-file-input"
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => onImportUsersCsv(event.target.files?.[0] ?? null)}
+                  />
+                  <button
+                    type="button"
+                    className="button button-secondary button--small"
+                    disabled={isPending}
+                    onClick={() => accessCsvInputRef.current?.click()}
+                  >
+                    Import CSV
+                  </button>
+                </div>
+              </div>
+              <div className="table-wrap">
+                <table className="admin-table admin-table--dense">
+                  <thead>
+                    <tr>
+                      <th>Use</th>
+                      <th>Name</th>
+                      <th>Email</th>
+                      <th>Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredUsers.map((user) => {
+                      const selected = selectedUserIds.includes(user.id);
+                      return (
+                        <tr key={user.id}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleUser(user.id)}
+                            />
+                          </td>
+                          <td>
+                            <strong>{user.name}</strong>
+                          </td>
+                          <td>{user.email}</td>
+                          <td>
+                            <select
+                              className="inline-select"
+                              disabled={!selected}
+                              value={userRoles[user.id] ?? "viewer"}
+                              onChange={(event) =>
+                                setUserRoles((current) => ({
+                                  ...current,
+                                  [user.id]: event.target.value as "admin" | "viewer"
+                                }))
+                              }
+                            >
+                              <option value="admin">Operator</option>
+                              <option value="viewer">Viewer</option>
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </form>
+          </article>
+
+          <aside className="surface-card admin-pane admin-access-rail">
+            <div className="admin-pane__header admin-pane__section-header">
+              <h2>Access</h2>
             </div>
             <div className="admin-utility-block">
-              <span className="admin-utility-label">Current code</span>
+              <p className="eyebrow">Shared access code</p>
               {config.currentSharedAccessCode ? (
-                <div className="admin-utility-row">
-                  <strong className="secret-shell__value">
-                    {showCurrentCode ? config.currentSharedAccessCode : "••••••••••"}
-                  </strong>
-                  <div className="button-row">
-                    <button
-                      type="button"
-                      className="button button-secondary button--small"
-                      onClick={() => setShowCurrentCode((current) => !current)}
-                    >
-                      {showCurrentCode ? "Hide" : "Reveal"}
-                    </button>
-                    <button
-                      type="button"
-                      className="button button-ghost button--small"
-                      onClick={() => void onCopyCurrentCode()}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
+                <strong className="secret-shell__value">{config.currentSharedAccessCode}</strong>
               ) : (
-                <p className="support-copy">Rotate once to store a revealable code.</p>
+                <p className="support-copy">Set a shared access code to generate a join link.</p>
               )}
-            </div>
-            <label className="field-shell">
-              <span>New code</span>
-              <input
-                value={sharedAccessCode}
-                onChange={(event) => setSharedAccessCode(event.target.value)}
-                required
-              />
-            </label>
-          </form>
-        </section>
-
-        <section className="surface-card admin-form-section">
-          <form className="admin-section-form" onSubmit={onSaveDataSource}>
-            <div className="admin-form-section__heading">
-              <h2>Data</h2>
               <div className="button-row">
-                <button type="submit" className="button button--small" disabled={isPending}>
-                  Save source
-                </button>
                 <button
                   type="button"
                   className="button button-secondary button--small"
-                  disabled={isPending}
-                  onClick={onRunImport}
+                  disabled={!config.currentSharedAccessCode}
+                  onClick={() => void onCopyCurrentCode()}
                 >
-                  Run import
+                  Copy code
+                </button>
+                <button
+                  type="button"
+                  className="button button-ghost button--small"
+                  disabled={!config.currentSharedAccessCode}
+                  onClick={() => void onCopyJoinLink()}
+                >
+                  Copy join link
                 </button>
               </div>
             </div>
-            <label className="field-shell">
-              <span>Active source</span>
-              <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
-                <option value="builtin:mock">Built-in Mock Field</option>
-                {config.dataSources
-                  .filter((source) => source.active)
-                  .map((source) => (
-                    <option key={source.id} value={`data-source:${source.id}`}>
-                      {source.name} ({source.kind.toUpperCase()})
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <div className="admin-log-list">
-              {config.importRuns.length === 0 ? (
-                <div className="list-line">
-                  <strong>No imports recorded.</strong>
-                </div>
-              ) : (
-                config.importRuns.map((run) => (
-                  <article key={run.id} className="list-line admin-log-row">
-                    <div className="admin-log-row__top">
-                      <strong>{run.sourceName}</strong>
-                      <span
-                        className={
-                          run.status === "success"
-                            ? "status-pill status-pill--positive"
-                            : "status-pill status-pill--danger"
-                        }
-                      >
-                        {run.status}
-                      </span>
-                    </div>
-                    <div className="admin-log-row__meta">
-                      <span>{formatDateTime(run.createdAt)}</span>
-                      <span>{run.message}</span>
-                    </div>
-                  </article>
-                ))
-              )}
-            </div>
-          </form>
-        </section>
 
-        <section className="surface-card admin-form-section admin-form-section--wide">
-          <form className="admin-section-form" onSubmit={onSaveSyndicates}>
-            <div className="admin-form-section__heading">
+            <form onSubmit={onRotateCode} className="admin-access-rail__form">
+              <label className="field-shell">
+                <span>New code</span>
+                <input
+                  value={sharedAccessCode}
+                  onChange={(event) => setSharedAccessCode(event.target.value)}
+                  required
+                />
+              </label>
+              <button type="submit" className="button button--small" disabled={isPending}>
+                Rotate code
+              </button>
+            </form>
+          </aside>
+        </section>
+      ) : null}
+
+      {activeTab === "syndicates" ? (
+        <section className="surface-card admin-pane">
+          <form onSubmit={onSaveSyndicates}>
+            <div className="admin-pane__header">
               <h2>Tracked syndicates</h2>
               <div className="button-row">
                 <span className="status-pill">{selectedSyndicateIds.length} selected</span>
@@ -559,26 +721,26 @@ export function SessionAdminCenter({
                 {mothershipSyndicateName} is missing from the syndicate catalog.
               </p>
             )}
-            <div className="table-wrap admin-table-wrap">
+            <div className="table-wrap">
               <table className="admin-table admin-table--dense">
-              <thead>
-                <tr>
-                  <th>
-                    <input
-                      type="checkbox"
-                      aria-label={
-                        allTrackedSyndicatesSelected
-                          ? "Keep only Mothership selected"
-                          : "Select all tracked syndicates"
-                      }
-                      checked={allTrackedSyndicatesSelected}
-                      onChange={(event) => toggleAllSyndicates(event.target.checked)}
-                    />
-                  </th>
-                  <th>Name</th>
-                </tr>
-              </thead>
-              <tbody>
+                <thead>
+                  <tr>
+                    <th>
+                      <input
+                        type="checkbox"
+                        aria-label={
+                          allTrackedSyndicatesSelected
+                            ? "Keep only Mothership selected"
+                            : "Select all tracked syndicates"
+                        }
+                        checked={allTrackedSyndicatesSelected}
+                        onChange={(event) => toggleAllSyndicates(event.target.checked)}
+                      />
+                    </th>
+                    <th>Name</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {activeSyndicates.map((entry) => (
                     <tr key={entry.id}>
                       <td>
@@ -601,59 +763,40 @@ export function SessionAdminCenter({
             </div>
           </form>
         </section>
+      ) : null}
 
-        <section className="surface-card admin-form-section admin-form-section--wide">
-          <form className="admin-section-form" onSubmit={onSaveAnalysisSettings}>
-            <div className="admin-form-section__heading">
-              <h2>Analysis strategy</h2>
-              <div className="button-row">
-                <button type="submit" className="button button--small" disabled={isPending}>
-                  Save strategy
-                </button>
-              </div>
-            </div>
-            <div className="compact-field-grid compact-field-grid--three">
-              <label className="field-shell">
-                <span>Target teams</span>
-                <input
-                  type="number"
-                  min={2}
-                  max={24}
-                  step={1}
-                  value={analysisSettings.targetTeamCount}
-                  onChange={(event) =>
-                    setAnalysisSettings((current) => ({
-                      ...current,
-                      targetTeamCount: Number(event.target.value)
-                    }))
-                  }
-                  required
-                />
-              </label>
-              <label className="field-shell">
-                <span>Max per-team %</span>
-                <input
-                  type="number"
-                  min={8}
-                  max={45}
-                  step={1}
-                  value={analysisSettings.maxSingleTeamPct}
-                  onChange={(event) =>
-                    setAnalysisSettings((current) => ({
-                      ...current,
-                      maxSingleTeamPct: Number(event.target.value)
-                    }))
-                  }
-                  required
-                />
-              </label>
-            </div>
-          </form>
-        </section>
+      {activeTab === "settings" ? (
+        <section className="surface-card admin-pane">
+          <div className="admin-pane__section-header">
+            <h2>Budget</h2>
+          </div>
+          <div className="compact-field-grid compact-field-grid--two">
+            <label className="field-shell">
+              <span>Projected pot</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={projectedPotInput}
+                onChange={(event) => {
+                  const nextValue = parseDollarInput(event.target.value);
+                  setProjectedPotInput(formatDollarInput(nextValue));
+                  setPayoutRules((current) => ({
+                    ...current,
+                    projectedPot: nextValue
+                  }));
+                }}
+                required
+              />
+            </label>
+            <label className="field-shell">
+              <span>Projected Mothership Budget</span>
+              <input value={formatCurrency(projectedMothershipBudget)} readOnly />
+            </label>
+          </div>
 
-        <section className="surface-card admin-form-section admin-form-section--wide">
-          <form className="admin-section-form" onSubmit={onSavePayoutRules}>
-            <div className="admin-form-section__heading">
+          <form onSubmit={onSavePayoutRules}>
+            <div className="admin-pane__header admin-pane__section-header">
               <h2>Payouts</h2>
               <div className="button-row">
                 <span className="status-pill">{totalPayoutPercent.toFixed(1)}%</span>
@@ -662,7 +805,7 @@ export function SessionAdminCenter({
                 </button>
               </div>
             </div>
-            <div className="compact-payout-grid">
+            <div className="compact-payout-grid session-payout-grid">
               {payoutStages.map((stage) => (
                 <label key={stage} className="field-shell">
                   <span>{titleCaseStage(stage)} %</span>
@@ -681,140 +824,190 @@ export function SessionAdminCenter({
                   />
                 </label>
               ))}
-              <label className="field-shell">
-                <span>Projected pot</span>
-                <input
-                  type="number"
-                  min={1000}
-                  step={1000}
-                  value={payoutRules.projectedPot}
-                  onChange={(event) =>
-                    setPayoutRules((current) => ({
-                      ...current,
-                      projectedPot: Number(event.target.value)
-                    }))
-                  }
-                  required
-                />
-              </label>
             </div>
-            <p className="support-copy">Total payout: {totalPayoutPercent.toFixed(1)}%</p>
           </form>
-        </section>
 
-        <section className="surface-card admin-form-section admin-form-section--wide">
-          <form className="admin-section-form" onSubmit={onSaveAccess}>
-            <div className="admin-form-section__heading">
-              <h2>Access</h2>
-              <div className="button-row">
-                <span className="status-pill">{selectedUserIds.length} selected</span>
+          <div className="admin-pane__section">
+            <form onSubmit={onSaveAnalysisSettings}>
+              <div className="admin-pane__header admin-pane__section-header">
+                <h2>Analysis strategy</h2>
                 <button type="submit" className="button button--small" disabled={isPending}>
-                  Save access
+                  Save strategy
+                </button>
+              </div>
+              <div className="compact-field-grid compact-field-grid--three">
+                <label className="field-shell">
+                  <span>Target teams</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={24}
+                    step={1}
+                    value={analysisSettings.targetTeamCount}
+                    onChange={(event) =>
+                      setAnalysisSettings((current) => ({
+                        ...current,
+                        targetTeamCount: Number(event.target.value)
+                      }))
+                    }
+                    required
+                  />
+                </label>
+                <label className="field-shell">
+                  <span>Max per-team %</span>
+                  <input
+                    type="number"
+                    min={8}
+                    max={45}
+                    step={1}
+                    value={analysisSettings.maxSingleTeamPct}
+                    onChange={(event) =>
+                      setAnalysisSettings((current) => ({
+                        ...current,
+                        maxSingleTeamPct: Number(event.target.value)
+                      }))
+                    }
+                    required
+                  />
+                </label>
+              </div>
+            </form>
+          </div>
+        </section>
+      ) : null}
+
+      {activeTab === "data" ? (
+        <section className="surface-card admin-pane">
+          <form onSubmit={onSaveDataSource}>
+            <div className="admin-pane__header">
+              <h2>Data</h2>
+              <div className="button-row">
+                <button type="submit" className="button button--small" disabled={isPending}>
+                  Save source
+                </button>
+                <button
+                  type="button"
+                  className="button button-secondary button--small"
+                  disabled={isPending}
+                  onClick={onRunImport}
+                >
+                  Run import
                 </button>
               </div>
             </div>
-            <div className="table-wrap admin-table-wrap">
+            <label className="field-shell" style={{ maxWidth: "24rem" }}>
+              <span>Active source</span>
+              <select value={sourceKey} onChange={(event) => setSourceKey(event.target.value)}>
+                <option value="builtin:mock">Built-in Mock Field</option>
+                {config.dataSources
+                  .filter((source) => source.active)
+                  .map((source) => (
+                    <option key={source.id} value={`data-source:${source.id}`}>
+                      {source.name} ({source.kind.toUpperCase()})
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </form>
+
+          <div className="admin-pane__section">
+            <p className="eyebrow admin-pane__section-kicker">Import history</p>
+            <div className="table-wrap">
               <table className="admin-table admin-table--dense">
                 <thead>
                   <tr>
-                    <th>Use</th>
-                    <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
+                    <th>Source</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Message</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {activeUsers.map((user) => {
-                    const selected = selectedUserIds.includes(user.id);
-                    return (
-                      <tr key={user.id}>
+                  {config.importRuns.length === 0 ? (
+                    <tr>
+                      <td colSpan={4}>
+                        <strong>No imports recorded.</strong>
+                      </td>
+                    </tr>
+                  ) : (
+                    config.importRuns.map((run) => (
+                      <tr key={run.id}>
                         <td>
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => toggleUser(user.id)}
-                          />
+                          <strong>{run.sourceName}</strong>
                         </td>
                         <td>
-                          <strong>{user.name}</strong>
-                        </td>
-                        <td>{user.email}</td>
-                        <td>
-                          <select
-                            className="inline-select"
-                            disabled={!selected}
-                            value={userRoles[user.id] ?? "viewer"}
-                            onChange={(event) =>
-                              setUserRoles((current) => ({
-                                ...current,
-                                [user.id]: event.target.value as "admin" | "viewer"
-                              }))
+                          <span
+                            className={
+                              run.status === "success"
+                                ? "status-pill status-pill--positive"
+                                : "status-pill status-pill--danger"
                             }
                           >
-                            <option value="admin">Operator</option>
-                            <option value="viewer">Viewer</option>
-                          </select>
+                            {run.status}
+                          </span>
                         </td>
+                        <td>{formatDateTime(run.createdAt)}</td>
+                        <td>{run.message}</td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          </form>
-        </section>
-
-        <section className="surface-card admin-form-section admin-form-section--wide">
-          <div className="admin-section-form">
-            <div className="admin-form-section__heading">
-              <h2>Lifecycle</h2>
-              {config.session.archivedAt ? (
-                <span className="status-pill status-pill--muted">Archived</span>
-              ) : null}
-            </div>
-            {config.session.archivedAt ? (
-              <>
-                <p className="support-copy">
-                  Archived {formatDateTime(config.session.archivedAt)}
-                  {config.session.archivedByName
-                    ? ` by ${config.session.archivedByName}`
-                    : ""}
-                  .
-                </p>
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="button button-danger button--small"
-                    onClick={() => {
-                      setShowDeleteConfirm(true);
-                      setDeleteConfirmationName("");
-                    }}
-                  >
-                    Delete permanently
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p className="support-copy">
-                  Archive hides this session from the default admin list without changing board
-                  access or stored auction history.
-                </p>
-                <div className="button-row">
-                  <button
-                    type="button"
-                    className="button button-ghost button--small"
-                    disabled={isPending}
-                    onClick={onArchiveSession}
-                  >
-                    Archive session
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         </section>
-      </div>
+      ) : null}
+
+      {activeTab === "lifecycle" ? (
+        <section className="surface-card admin-pane">
+          <div className="admin-pane__header">
+            <h2>Lifecycle</h2>
+            {config.session.archivedAt ? (
+              <span className="status-pill status-pill--muted">Archived</span>
+            ) : null}
+          </div>
+          {config.session.archivedAt ? (
+            <>
+              <p className="support-copy">
+                Archived {formatDateTime(config.session.archivedAt)}
+                {config.session.archivedByName
+                  ? ` by ${config.session.archivedByName}`
+                  : ""}
+                .
+              </p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button button-danger button--small"
+                  onClick={() => {
+                    setShowDeleteConfirm(true);
+                    setDeleteConfirmationName("");
+                  }}
+                >
+                  Delete permanently
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="support-copy">
+                Archive hides this session from the default admin list without changing board
+                access or stored auction history.
+              </p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="button button-ghost button--small"
+                  disabled={isPending}
+                  onClick={onArchiveSession}
+                >
+                  Archive session
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+      ) : null}
 
       {showDeleteConfirm ? (
         <div className="confirm-modal-backdrop" role="presentation">

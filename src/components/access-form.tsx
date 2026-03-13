@@ -1,12 +1,21 @@
 "use client";
 
-import { FormEvent, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useState, useTransition } from "react";
 
 export function AccessForm() {
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
-  const [sharedCode, setSharedCode] = useState("");
+  const [sharedCode, setSharedCode] = useState(searchParams.get("code")?.trim() ?? "");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const prefilledCode = searchParams.get("code")?.trim() ?? "";
+    if (prefilledCode) {
+      setSharedCode(prefilledCode);
+    }
+  }, [searchParams]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,7 +47,7 @@ export function AccessForm() {
   return (
     <form className="minimal-auth-card" onSubmit={onSubmit}>
       <div className="minimal-auth-card__header">
-        <p className="minimal-auth-card__brand">Mothership</p>
+        <p className="minimal-auth-card__brand">mothership smartbid™</p>
         <h1 className="minimal-auth-card__title">Enter room</h1>
       </div>
 

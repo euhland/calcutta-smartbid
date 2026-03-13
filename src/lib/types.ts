@@ -370,6 +370,7 @@ export interface AuctionSession {
 }
 
 export interface StoredAuctionSession extends AuctionSession {
+  sharedAccessCodePlaintext: string;
   sharedAccessCodeHash: string;
   sharedAccessCodeLookup: string;
   sharedAccessCodeCiphertext: string;
@@ -654,6 +655,10 @@ export const updateSessionAccessSchema = z.object({
     )
     .min(1)
     .max(40)
+});
+
+export const importSessionAccessCsvSchema = z.object({
+  csvContent: z.string().min(1)
 });
 
 export const updateSessionSharedCodeSchema = z.object({
