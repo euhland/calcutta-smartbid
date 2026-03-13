@@ -470,7 +470,7 @@ export interface RemoteProjectionFeed {
 
 export interface SessionSyndicateFundingInput {
   catalogEntryId: string;
-  estimatedBudget: number;
+  estimatedBudget?: number | null;
   budgetConfidence: BudgetConfidence;
   budgetNotes: string;
 }
@@ -683,7 +683,7 @@ export const updateSessionSyndicatesSchema = z.object({
     .array(
       z.object({
         catalogEntryId: z.string(),
-        estimatedBudget: z.number().nonnegative(),
+        estimatedBudget: z.number().nonnegative().nullable().optional(),
         budgetConfidence: budgetConfidenceSchema.default("medium"),
         budgetNotes: z.string().max(400).default("")
       })

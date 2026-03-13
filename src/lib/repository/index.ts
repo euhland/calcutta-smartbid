@@ -2877,7 +2877,10 @@ function mapSessionSyndicates(rows: Array<Record<string, unknown>> | null | unde
     color: getSyndicateBrandColor(String(row.name)),
     spend: Number(row.spend),
     remainingBankroll: Number(row.remaining_bankroll),
-    estimatedBudget: Number(row.estimated_budget ?? 0),
+    estimatedBudget:
+      row.estimated_budget === null || row.estimated_budget === undefined
+        ? undefined
+        : Number(row.estimated_budget),
     budgetConfidence: String(row.budget_confidence ?? "medium") as Syndicate["budgetConfidence"],
     budgetNotes: String(row.budget_notes ?? ""),
     estimatedRemainingBudget: Number(row.remaining_bankroll ?? 0),

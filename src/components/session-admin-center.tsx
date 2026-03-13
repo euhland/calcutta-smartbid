@@ -54,6 +54,30 @@ function parseDollarInput(value: string) {
   return Number(digits);
 }
 
+function buildSyndicateFundingPayload(
+  selectedSyndicateIds: string[],
+  syndicateFundingDrafts: Record<string, SyndicateFundingDraft>
+) {
+  return selectedSyndicateIds.map((catalogEntryId) => {
+    const draft = syndicateFundingDrafts[catalogEntryId];
+
+    if (!draft) {
+      return {
+        catalogEntryId,
+        budgetConfidence: "medium" as const,
+        budgetNotes: ""
+      };
+    }
+
+    return {
+      catalogEntryId,
+      estimatedBudget: parseDollarInput(draft.estimatedBudgetInput),
+      budgetConfidence: draft.budgetConfidence,
+      budgetNotes: draft.budgetNotes
+    };
+  });
+}
+
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -389,15 +413,10 @@ export function SessionAdminCenter({
           "PUT",
           {
             catalogSyndicateIds: selectedSyndicateIds,
-            syndicateFunding: selectedSyndicateIds.map((catalogEntryId) => ({
-              catalogEntryId,
-              estimatedBudget: parseDollarInput(
-                syndicateFundingDrafts[catalogEntryId]?.estimatedBudgetInput ?? "0"
-              ),
-              budgetConfidence:
-                syndicateFundingDrafts[catalogEntryId]?.budgetConfidence ?? "medium",
-              budgetNotes: syndicateFundingDrafts[catalogEntryId]?.budgetNotes ?? ""
-            }))
+            syndicateFunding: buildSyndicateFundingPayload(
+              selectedSyndicateIds,
+              syndicateFundingDrafts
+            )
           },
           "Tracked syndicates updated."
         );

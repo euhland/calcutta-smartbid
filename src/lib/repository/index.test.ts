@@ -107,4 +107,51 @@ describe("repository funding model", () => {
       budgetNotes: "Aggressive room read"
     });
   });
+
+  it("seeds newly added syndicates from the legacy budget when no estimate is submitted yet", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+    const railbirds = await repository.createSyndicateCatalogEntry({
+      name: "Railbirds"
+    });
+
+    const session = await repository.createSession({
+      name: "Funding Seed Test",
+      sharedAccessCode: "funding123",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 120000
+      },
+      analysisSettings: {
+        targetTeamCount: 8,
+        maxSingleTeamPct: 22
+      },
+      dataSourceKey: "builtin:mock",
+      simulationIterations: 1000
+    });
+
+    const updated = await repository.updateSessionSyndicates(session.id, {
+      catalogSyndicateIds: [mothership.id, riverboat.id, railbirds.id],
+      syndicateFunding: [{ catalogEntryId: railbirds.id, budgetConfidence: "medium", budgetNotes: "" }]
+    });
+
+    expect(
+      updated.session.syndicates.find((syndicate) => syndicate.name === "Railbirds")
+    ).toMatchObject({
+      estimatedBudget: 40000,
+      estimatedRemainingBudget: 40000,
+      estimateExceeded: false
+    });
+  });
 });

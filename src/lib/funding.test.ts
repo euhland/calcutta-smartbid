@@ -2,7 +2,8 @@ import {
   buildDefaultMothershipFunding,
   deriveMothershipFundingSnapshot,
   deriveSyndicateEstimateState,
-  normalizeMothershipFunding
+  normalizeMothershipFunding,
+  normalizeSyndicateEstimate
 } from "@/lib/funding";
 
 describe("funding helpers", () => {
@@ -39,6 +40,23 @@ describe("funding helpers", () => {
     expect(deriveSyndicateEstimateState(18000, 18100)).toEqual({
       estimatedRemainingBudget: -100,
       estimateExceeded: true
+    });
+  });
+
+  it("falls back to the legacy seed when no syndicate estimate is stored yet", () => {
+    expect(
+      normalizeSyndicateEstimate(
+        {
+          estimatedBudget: null,
+          budgetConfidence: null,
+          budgetNotes: null
+        },
+        25000
+      )
+    ).toEqual({
+      estimatedBudget: 25000,
+      budgetConfidence: "medium",
+      budgetNotes: ""
     });
   });
 
