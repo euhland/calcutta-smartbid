@@ -191,6 +191,18 @@ p {
   color: var(--muted-strong);
 }
 
+.theme-toggle {
+  min-width: 2.5rem;
+  padding-inline: 0.7rem;
+}
+
+.theme-toggle__icon {
+  width: 1rem;
+  height: 1rem;
+  display: block;
+  flex-shrink: 0;
+}
+
 .button--small {
   padding: 0.45rem 0.8rem;
   min-height: 2.1rem;
@@ -725,7 +737,7 @@ kbd {
 
 .decision-strip,
 .metric-grid {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   margin-top: 1.2rem;
 }
 
@@ -761,6 +773,10 @@ kbd {
   margin-top: 0.5rem;
   font-size: 1.5rem;
   letter-spacing: -0.03em;
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
 }
 
 .callout-panel p {
@@ -777,10 +793,15 @@ kbd {
 
 .metric-card {
   padding: 1rem;
+  min-width: 0;
 }
 
 .metric-card--compact strong {
   font-size: 1.2rem;
+}
+
+.metric-card--long-value strong {
+  font-size: clamp(1.1rem, 1.45vw, 1.3rem);
 }
 
 .detail-grid {
@@ -1020,6 +1041,13 @@ kbd {
   padding: 1rem 1.1rem;
 }
 
+.admin-pane__section {
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
 .admin-pane__header,
 .admin-form-section__heading {
   display: flex;
@@ -1037,6 +1065,14 @@ kbd {
 .admin-pane__header p {
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.admin-pane__section-header {
+  margin-bottom: 0.15rem;
+}
+
+.admin-pane__section-kicker {
+  margin-bottom: 0;
 }
 
 .admin-pane__toolbar {

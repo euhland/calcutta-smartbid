@@ -645,6 +645,7 @@ export function DashboardShell({
                             )}`
                           : "--"
                       }
+                      longValue={Boolean(recommendation)}
                     />
                     <MetricCard
                       label="Opening bid"
@@ -982,6 +983,7 @@ export function DashboardShell({
                             ? `${formatCurrency(analysisBudgetRow.targetBid)} / ${formatCurrency(analysisBudgetRow.maxBid)}`
                             : "Sold / unavailable"
                         }
+                        longValue={Boolean(analysisBudgetRow)}
                       />
                     </div>
 
@@ -1062,6 +1064,7 @@ export function DashboardShell({
                             ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
                             : "--"
                         }
+                        longValue={Boolean(selectedSimulation)}
                       />
                       <MetricCard
                         label="Conviction share"
@@ -1411,6 +1414,7 @@ function ViewerBoard({
                   ? `${formatCurrency(recommendation.targetBid)} / ${formatCurrency(recommendation.maxBid)}`
                   : "--"
               }
+              longValue={Boolean(recommendation)}
             />
             <MetricCard
               label="Stoplight"
@@ -1484,14 +1488,22 @@ function ViewerBoard({
 function MetricCard({
   label,
   value,
-  compact = false
+  compact = false,
+  longValue = false
 }: {
   label: string;
   value: string;
   compact?: boolean;
+  longValue?: boolean;
 }) {
   return (
-    <div className={cn("metric-card", compact && "metric-card--compact")}>
+    <div
+      className={cn(
+        "metric-card",
+        compact && "metric-card--compact",
+        longValue && "metric-card--long-value"
+      )}
+    >
       <span>{label}</span>
       <strong>{value}</strong>
     </div>

@@ -140,4 +140,75 @@ describe("csv source loading", () => {
     expect(Math.min(...result.teams.map((team) => team.seed))).toBe(1);
     expect(Math.max(...result.teams.map((team) => team.seed))).toBe(16);
   });
+
+  it("preserves optional scouting fields from direct CSV session imports", async () => {
+    const regions = ["East", "West", "South", "Midwest"];
+    const rows = [
+      [
+        "id",
+        "name",
+        "shortName",
+        "region",
+        "seed",
+        "rating",
+        "offense",
+        "defense",
+        "tempo",
+        "NET Rank",
+        "Ranked Wins",
+        "Offensive 3PT Percentage",
+        "Wins Above Bubble"
+      ].join(","),
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `T${seed}`,
+            region,
+            String(seed),
+            String(100 - seed * 0.5),
+            String(120 - seed * 0.3),
+            String(92 + seed * 0.2),
+            String(67 + (seed % 4)),
+            String(seed + 4),
+            String(Math.max(0, 10 - Math.floor(seed / 2))),
+            (39.5 - seed * 0.2).toFixed(1),
+            (8.5 - seed * 0.2).toFixed(1)
+          ].join(",");
+        })
+      )
+    ];
+
+    const result = await loadProjectionsFromSource(
+      {
+        key: "data-source:session-csv",
+        name: "Session CSV",
+        kind: "csv"
+      },
+      [
+        {
+          id: "session-csv",
+          name: "Session CSV",
+          kind: "csv",
+          active: true,
+          config: {
+            csvContent: rows.join("\n"),
+            fileName: "session.csv"
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          lastTestedAt: null
+        }
+      ]
+    );
+
+    const importedTeam = result.teams.find((team) => team.id === "east-1");
+    expect(importedTeam?.scouting?.netRank).toBe(5);
+    expect(importedTeam?.scouting?.kenpomRank).toBe(5);
+    expect(importedTeam?.scouting?.rankedWins).toBe(10);
+    expect(importedTeam?.scouting?.threePointPct).toBe(39.3);
+    expect(importedTeam?.scouting?.quadWins?.q1).toBe(9);
+  });
 });
