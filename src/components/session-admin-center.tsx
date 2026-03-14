@@ -609,10 +609,6 @@ export function SessionAdminCenter({
             Back
           </Link>
           <ThemeToggle />
-          <span className="status-pill">{config.session.activeDataSource.name}</span>
-          <span className="status-pill">
-            {config.importRuns.length} import{config.importRuns.length === 1 ? "" : "s"}
-          </span>
           <Link
             href={`/session/${config.session.id}`}
             className="button button-secondary button--small"
