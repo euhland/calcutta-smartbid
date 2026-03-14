@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import {
   useCallback,
   startTransition,
@@ -26,10 +27,13 @@ import {
   SoldTeamSummary,
   Stage,
   Syndicate,
+  TeamClassificationValue,
   TeamProjection
 } from "@/lib/types";
+import { TEAM_CLASSIFICATION_ORDER, getTeamClassificationMeta } from "@/lib/team-classifications";
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
 interface DashboardShellProps {
   sessionId: string;
@@ -82,7 +86,7 @@ export function DashboardShell({
   currentMember
 }: DashboardShellProps) {
   const router = useRouter();
-  const { dashboard, refresh, broadcastRefresh } = useSessionDashboard(
+  const { dashboard, refresh, broadcastRefresh, replaceDashboard } = useSessionDashboard(
     sessionId,
     initialDashboard
   );
@@ -96,12 +100,15 @@ export function DashboardShell({
   );
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
   const [isSavingLiveState, setIsSavingLiveState] = useState(false);
+  const [isSavingClassification, setIsSavingClassification] = useState(false);
+  const [isSavingTeamNote, setIsSavingTeamNote] = useState(false);
   const [overrideForm, setOverrideForm] = useState({
     rating: "",
     offense: "",
     defense: "",
     tempo: ""
   });
+  const [teamNoteInput, setTeamNoteInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [analysisSearch, setAnalysisSearch] = useState("");
@@ -200,6 +207,10 @@ export function DashboardShell({
     dashboard.analysis.ranking.find((row) => row.teamId === analysisTeamId) ?? null;
   const analysisBudgetRow =
     dashboard.analysis.budgetRows.find((row) => row.teamId === analysisTeamId) ?? null;
+  const analysisTeamClassification = analysisRow?.classification ?? null;
+  const analysisTeamNote = analysisRow?.note ?? null;
+  const trimmedTeamNoteInput = teamNoteInput.trim();
+  const teamNoteIsDirty = trimmedTeamNoteInput !== (analysisTeamNote ?? "");
   const focusOwnedTeams = useMemo(
     () =>
       dashboard.soldTeams.filter(
@@ -248,6 +259,11 @@ export function DashboardShell({
     (nominatedTeam &&
       snapshot?.teamResults[nominatedTeam.id]?.roundProbabilities.champion) ||
     0;
+  const nominatedTeamClassification =
+    (nominatedTeam && dashboard.session.teamClassifications[nominatedTeam.id]?.classification) ||
+    null;
+  const nominatedTeamNote =
+    (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
   const focusFunding = useMemo(
     () =>
       deriveMothershipFundingSnapshot(
@@ -287,6 +303,10 @@ export function DashboardShell({
       tempo: selectedOverride?.tempo?.toString() ?? selectedTeam.tempo.toString()
     });
   }, [selectedOverride, selectedTeam]);
+
+  useEffect(() => {
+    setTeamNoteInput(analysisTeamNote ?? "");
+  }, [analysisTeamId, analysisTeamNote]);
 
   const saveActiveTeam = useCallback(async (nextTeamId: string) => {
     pendingActiveTeamIdRef.current = nextTeamId;
@@ -534,6 +554,153 @@ export function DashboardShell({
     });
   }
 
+  async function saveTeamClassification(classification: TeamClassificationValue) {
+    if (!analysisDetailTeam) {
+      setError("Choose a team before saving a classification.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsSavingClassification(true);
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/classification`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ classification })
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to save team classification.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      void broadcastRefresh("team-classification");
+    } catch {
+      setError("Unable to save team classification.");
+    } finally {
+      setIsSavingClassification(false);
+    }
+  }
+
+  async function clearTeamClassification() {
+    if (!analysisDetailTeam) {
+      setError("Choose a team before clearing a classification.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsSavingClassification(true);
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/classification`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to clear team classification.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      void broadcastRefresh("team-classification");
+    } catch {
+      setError("Unable to clear team classification.");
+    } finally {
+      setIsSavingClassification(false);
+    }
+  }
+
+  async function saveTeamNote() {
+    if (!analysisDetailTeam) {
+      setError("Choose a team before saving a note.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsSavingTeamNote(true);
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/note`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ note: teamNoteInput })
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to save team note.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      setNotice("Team note saved.");
+      void broadcastRefresh("team-note");
+    } catch {
+      setError("Unable to save team note.");
+    } finally {
+      setIsSavingTeamNote(false);
+    }
+  }
+
+  async function clearTeamNote() {
+    if (!analysisDetailTeam) {
+      setError("Choose a team before clearing a note.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsSavingTeamNote(true);
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/projections/${analysisDetailTeam.id}/note`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to clear team note.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      setTeamNoteInput("");
+      setNotice("Team note cleared.");
+      void broadcastRefresh("team-note");
+    } catch {
+      setError("Unable to clear team note.");
+    } finally {
+      setIsSavingTeamNote(false);
+    }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", {
       method: "POST"
@@ -606,6 +773,20 @@ export function DashboardShell({
                             ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
                             : "Set an active team to unlock bid guidance."}
                         </p>
+                        {nominatedTeamClassification || nominatedTeamNote ? (
+                          <div className="decision-panel__annotation">
+                            {nominatedTeamClassification ? (
+                              <div className="decision-panel__classification">
+                                <TeamClassificationBadge
+                                  classification={nominatedTeamClassification}
+                                />
+                              </div>
+                            ) : null}
+                            {nominatedTeamNote ? (
+                              <span className="decision-panel__note">{nominatedTeamNote}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                       {recommendation ? (
                         <div
@@ -1168,6 +1349,7 @@ export function DashboardShell({
                       <tr>
                         <th>Rank</th>
                         <th>Team</th>
+                        <th>Signal</th>
                         <th>Score</th>
                         <th>Target</th>
                         <th>Max</th>
@@ -1184,6 +1366,16 @@ export function DashboardShell({
                           <td>#{row.rank}</td>
                           <td>
                             <strong>{row.teamName}</strong>
+                          </td>
+                          <td>
+                            {row.classification ? (
+                              <TeamClassificationBadge
+                                classification={row.classification}
+                                compact
+                              />
+                            ) : (
+                              <span className="team-classification-empty">--</span>
+                            )}
                           </td>
                           <td>
                             {dashboard.analysis.ranking
@@ -1210,6 +1402,118 @@ export function DashboardShell({
 
                 {analysisDetailTeam && analysisRow ? (
                   <div className="stack-layout">
+                    <article className="surface-card">
+                      <div className="section-headline">
+                        <div>
+                          <p className="eyebrow">Classification</p>
+                        </div>
+                        {analysisTeamClassification ? (
+                          <TeamClassificationBadge classification={analysisTeamClassification} />
+                        ) : (
+                          <span className="status-pill status-pill--muted">Unclassified</span>
+                        )}
+                      </div>
+                      <div className="classification-picker" role="radiogroup" aria-label="Team classification">
+                        {TEAM_CLASSIFICATION_ORDER.map((classification) => {
+                          const meta = getTeamClassificationMeta(classification);
+                          const isSelected = analysisTeamClassification === classification;
+
+                          return (
+                            <button
+                              key={classification}
+                              type="button"
+                              className={cn(
+                                "classification-option",
+                                meta && `classification-option--${meta.tone}`,
+                                isSelected && "classification-option--selected"
+                              )}
+                              onClick={() => void saveTeamClassification(classification)}
+                              disabled={isSavingClassification}
+                              aria-pressed={isSelected}
+                            >
+                              <span className="classification-option__icon" aria-hidden="true">
+                                {meta ? (
+                                  <>
+                                    <Image
+                                      className="classification-option__icon-image"
+                                      src={meta.iconSrc}
+                                      alt=""
+                                      width={20}
+                                      height={20}
+                                      unoptimized
+                                      onError={(event) => {
+                                        event.currentTarget.style.display = "none";
+                                        event.currentTarget.nextElementSibling?.removeAttribute("hidden");
+                                      }}
+                                    />
+                                    <span className="classification-option__icon-fallback" hidden>
+                                      {meta.iconLabel}
+                                    </span>
+                                  </>
+                                ) : null}
+                              </span>
+                              <span>{meta?.label ?? classification}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="button-row analysis-annotation-actions">
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          onClick={() => void clearTeamClassification()}
+                          disabled={!analysisTeamClassification || isSavingClassification}
+                        >
+                          Clear classification
+                        </button>
+                      </div>
+                    </article>
+
+                    <article className="surface-card">
+                      <div className="section-headline">
+                        <div>
+                          <p className="eyebrow">Team Note</p>
+                        </div>
+                        {teamNoteInput.length > 0 ? (
+                          <span className="status-pill status-pill--muted">
+                            {teamNoteInput.length}/80
+                          </span>
+                        ) : null}
+                      </div>
+                      <label className="field-shell">
+                        <span>Short note</span>
+                        <input
+                          type="text"
+                          value={teamNoteInput}
+                          onChange={(event) => setTeamNoteInput(event.target.value)}
+                          maxLength={80}
+                          placeholder="Quick thought on this team"
+                        />
+                      </label>
+                      <div className="button-row analysis-annotation-actions">
+                        <button
+                          type="button"
+                          className="button button-primary button--small"
+                          onClick={() => void saveTeamNote()}
+                          disabled={
+                            isSavingTeamNote ||
+                            trimmedTeamNoteInput.length === 0 ||
+                            !teamNoteIsDirty
+                          }
+                        >
+                          Save note
+                        </button>
+                        <button
+                          type="button"
+                          className="button button-ghost button--small"
+                          onClick={() => void clearTeamNote()}
+                          disabled={!analysisTeamNote || isSavingTeamNote}
+                        >
+                          Clear note
+                        </button>
+                      </div>
+                    </article>
+
                     <div className="metric-grid">
                       <MetricCard
                         label="Rank / percentile"
@@ -1653,6 +1957,8 @@ function ViewerBoard({
   recommendation: BidRecommendation | null;
 }) {
   const nominatedTeam = dashboard.nominatedTeam;
+  const nominatedTeamNote =
+    (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
   const [ownershipSearch, setOwnershipSearch] = useState("");
   const soldFeed = useMemo(() => [...dashboard.soldTeams].reverse(), [dashboard.soldTeams]);
   const ownershipGroups = useMemo(() => {
@@ -1704,6 +2010,17 @@ function ViewerBoard({
                 ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
                 : "The next active team will take over this board as soon as the operator makes a nomination."}
             </p>
+            {nominatedTeam &&
+            dashboard.session.teamClassifications[nominatedTeam.id]?.classification ? (
+              <div className="viewer-bid-hero__classification">
+                <TeamClassificationBadge
+                  classification={
+                    dashboard.session.teamClassifications[nominatedTeam.id]?.classification
+                  }
+                />
+              </div>
+            ) : null}
+            {nominatedTeamNote ? <p className="viewer-note">{nominatedTeamNote}</p> : null}
           </div>
 
           <div className="metric-grid viewer-board__metrics">

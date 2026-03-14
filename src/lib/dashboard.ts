@@ -45,12 +45,27 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     baseProjections: session.baseProjections,
     projections: session.projections,
     projectionOverrides: session.projectionOverrides,
+    teamClassifications: session.teamClassifications,
+    teamNotes: session.teamNotes,
     projectionProvider: session.projectionProvider,
     activeDataSource: session.activeDataSource,
     finalFourPairings: session.finalFourPairings,
     bracketImport: session.bracketImport,
     analysisImport: session.analysisImport,
-    importReadiness: session.importReadiness,
+    importReadiness:
+      session.importReadiness ??
+      {
+        mode: "legacy",
+        status: "ready",
+        summary: "Using the active data source.",
+        issues: [],
+        warnings: [],
+        hasBracket: false,
+        hasAnalysis: false,
+        mergedProjectionCount: session.projections.length,
+        lastBracketImportAt: null,
+        lastAnalysisImportAt: null
+      },
     liveState: session.liveState,
     purchases: session.purchases,
     simulationSnapshot: session.simulationSnapshot

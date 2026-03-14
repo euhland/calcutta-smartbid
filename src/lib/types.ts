@@ -21,6 +21,11 @@ export type BudgetConfidence = "low" | "medium" | "high";
 export type FundingStatus = "safe" | "stretch" | "above-plan";
 export type SessionImportMode = "legacy" | "session-imports";
 export type SessionImportStatus = "ready" | "attention";
+export type TeamClassificationValue =
+  | "must-have"
+  | "love-at-right-price"
+  | "caution"
+  | "nuclear-disaster";
 
 export interface PayoutRules {
   roundOf64: number;
@@ -186,6 +191,18 @@ export interface ProjectionOverride {
   updatedAt: string;
 }
 
+export interface TeamClassificationTag {
+  teamId: string;
+  classification: TeamClassificationValue;
+  updatedAt: string;
+}
+
+export interface TeamNoteTag {
+  teamId: string;
+  note: string;
+  updatedAt: string;
+}
+
 export type TeamRoundProbabilities = Record<Stage, number>;
 
 export interface MatchupConflict {
@@ -200,6 +217,8 @@ export interface AnalysisRankingRow {
   shortName: string;
   seed: number;
   region: string;
+  classification: TeamClassificationValue | null;
+  note: string | null;
   compositeScore: number;
   percentile: number;
   scoutingCoverage: number;
@@ -232,6 +251,7 @@ export interface AnalysisFieldAverages {
 export interface AnalysisBudgetRow {
   teamId: string;
   teamName: string;
+  classification: TeamClassificationValue | null;
   rank: number;
   percentile: number;
   convictionScore: number;
@@ -403,6 +423,8 @@ export interface AuctionSession {
   baseProjections: TeamProjection[];
   projections: TeamProjection[];
   projectionOverrides: Record<string, ProjectionOverride>;
+  teamClassifications: Record<string, TeamClassificationTag>;
+  teamNotes: Record<string, TeamNoteTag>;
   projectionProvider: string;
   activeDataSource: SessionDataSourceRef;
   finalFourPairings: [string, string][];
@@ -681,6 +703,25 @@ export const saveProjectionOverrideSchema = z.object({
   offense: z.number().optional(),
   defense: z.number().optional(),
   tempo: z.number().optional()
+});
+
+export const teamClassificationValueSchema = z.enum([
+  "must-have",
+  "love-at-right-price",
+  "caution",
+  "nuclear-disaster"
+]);
+
+export const saveTeamClassificationSchema = z.object({
+  classification: teamClassificationValueSchema
+});
+
+export const saveTeamNoteSchema = z.object({
+  note: z
+    .string()
+    .trim()
+    .min(1, "Team note is required.")
+    .max(80, "Team note must be 80 characters or fewer.")
 });
 
 export const teamQuadWinsSchema = z.object({

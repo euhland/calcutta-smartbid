@@ -15,7 +15,16 @@ export function buildSessionAnalysisSnapshot(
 ): SessionAnalysisSnapshot {
   const intelligence = buildTeamIntelligence(session.projections, session.liveState.nominatedTeamId);
   const soldTeamIds = new Set(session.purchases.map((purchase) => purchase.teamId));
-  const ranking = intelligence.ranking.map((row) => ({ ...row } satisfies AnalysisRankingRow));
+  const classificationLookup = session.teamClassifications;
+  const noteLookup = session.teamNotes;
+  const ranking = intelligence.ranking.map(
+    (row) =>
+      ({
+        ...row,
+        classification: classificationLookup[row.teamId]?.classification ?? null,
+        note: noteLookup[row.teamId]?.note ?? null
+      }) satisfies AnalysisRankingRow
+  );
   const availableRows = ranking.filter((row) => !soldTeamIds.has(row.teamId));
   const targetTeamCount = clamp(Math.round(session.analysisSettings.targetTeamCount), 2, 24);
   const maxSingleTeamPct = clamp(session.analysisSettings.maxSingleTeamPct, 8, 45);
@@ -53,6 +62,7 @@ export function buildSessionAnalysisSnapshot(
       return {
         teamId: row.teamId,
         teamName: row.teamName,
+        classification: row.classification,
         rank: ranking.findIndex((candidate) => candidate.teamId === row.teamId) + 1,
         percentile: row.percentile,
         convictionScore: roundMetric(conviction, 4),

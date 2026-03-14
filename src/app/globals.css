@@ -313,6 +313,100 @@ p {
   color: var(--danger);
 }
 
+.team-classification-badge {
+  --classification-tone: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font: 600 0.75rem/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.team-classification-badge--compact {
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  gap: 0;
+}
+
+.team-classification-badge__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.9rem;
+  min-height: 1.9rem;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.team-classification-badge__icon-image {
+  width: 1.3rem;
+  height: 1.3rem;
+  object-fit: contain;
+}
+
+.team-classification-badge__icon-fallback {
+  line-height: 1;
+}
+
+.team-classification-badge--compact .team-classification-badge__label {
+  display: none;
+}
+
+.team-classification-badge--compact .team-classification-badge__icon {
+  min-width: 2rem;
+  min-height: 2rem;
+}
+
+.team-classification-badge--compact .team-classification-badge__icon-image {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+
+.team-classification-badge--positive {
+  --classification-tone: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--success);
+}
+
+.team-classification-badge--accent {
+  --classification-tone: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent);
+}
+
+.team-classification-badge--warn {
+  --classification-tone: var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--warn) 35%, transparent);
+  color: var(--warn);
+}
+
+.team-classification-badge--danger {
+  --classification-tone: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel));
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
+}
+
+.team-classification-badge--compact.team-classification-badge--positive,
+.team-classification-badge--compact.team-classification-badge--accent,
+.team-classification-badge--compact.team-classification-badge--warn,
+.team-classification-badge--compact.team-classification-badge--danger {
+  border-color: transparent;
+  background: transparent;
+}
+
 .form-grid {
   display: grid;
   gap: 1rem;
@@ -761,6 +855,24 @@ kbd {
   align-items: flex-start;
 }
 
+.decision-panel__annotation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.decision-panel__classification {
+  display: inline-flex;
+}
+
+.decision-panel__note {
+  color: var(--muted);
+  line-height: 1.55;
+  max-width: 32rem;
+}
+
 .decision-panel h2,
 .callout-panel h3 {
   font-size: 2rem;
@@ -913,6 +1025,125 @@ kbd {
 
 .analysis-summary-row {
   margin-bottom: 1rem;
+}
+
+.analysis-annotation-actions {
+  margin-top: 0.9rem;
+}
+
+.classification-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.classification-option {
+  --classification-tone: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel-muted);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.classification-option:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--classification-tone) 35%, transparent);
+}
+
+.classification-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.classification-option--selected {
+  border-color: color-mix(in srgb, var(--classification-tone) 48%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--classification-tone) 30%, transparent);
+  background: color-mix(in srgb, var(--classification-tone) 12%, var(--panel));
+}
+
+.classification-option--positive {
+  --classification-tone: var(--success);
+}
+
+.classification-option--accent {
+  --classification-tone: var(--accent);
+}
+
+.classification-option--warn {
+  --classification-tone: var(--warn);
+}
+
+.classification-option--danger {
+  --classification-tone: var(--danger);
+}
+
+.classification-option__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  color: var(--classification-tone);
+  font: 600 0.72rem/1 var(--font-mono);
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.classification-option__icon-image {
+  width: 1.7rem;
+  height: 1.7rem;
+  object-fit: contain;
+  transition: transform 120ms ease;
+}
+
+.classification-option__icon-fallback {
+  line-height: 1;
+}
+
+.classification-option--selected .classification-option__icon-image {
+  transform: scale(1.06);
+}
+
+.classification-option--selected > span:last-child {
+  font-weight: 650;
+}
+
+[data-theme="light"] .team-classification-badge--positive,
+[data-theme="light"] .team-classification-badge--accent,
+[data-theme="light"] .team-classification-badge--warn,
+[data-theme="light"] .team-classification-badge--danger {
+  border-color: color-mix(in srgb, var(--classification-tone) 34%, transparent);
+}
+
+[data-theme="light"] .classification-option {
+  background: color-mix(in srgb, var(--classification-tone) 3%, var(--panel-muted));
+}
+
+[data-theme="light"] .classification-option:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--classification-tone) 5%, var(--panel));
+}
+
+[data-theme="light"] .classification-option--selected {
+  border-color: color-mix(in srgb, var(--classification-tone) 44%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--classification-tone) 24%, transparent);
+  background: color-mix(in srgb, var(--classification-tone) 12%, var(--panel));
+}
+
+.team-classification-empty {
+  color: var(--muted);
+  font: 600 0.78rem/1.2 var(--font-mono);
+  letter-spacing: 0.06em;
 }
 
 .portfolio-card-grid {
@@ -1082,10 +1313,26 @@ kbd {
   line-height: 1.55;
 }
 
+.viewer-bid-hero__classification {
+  position: relative;
+  z-index: 1;
+}
+
+.viewer-bid-hero .viewer-note {
+  position: relative;
+  z-index: 1;
+  margin-top: 0.85rem;
+  max-width: 34rem;
+}
+
 .viewer-bid-hero--team p {
   max-width: 34rem;
   margin: 0;
   font-size: 1.02rem;
+}
+
+.viewer-bid-hero--team .viewer-note {
+  margin-top: 0.85rem;
 }
 
 .viewer-ledger,
@@ -1787,7 +2034,8 @@ kbd {
   .metric-grid,
   .portfolio-card__metrics,
   .syndicate-row,
-  .mini-grid {
+  .mini-grid,
+  .classification-picker {
     grid-template-columns: 1fr;
   }
 
