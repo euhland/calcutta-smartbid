@@ -419,6 +419,19 @@ function validateBracketStructure(teams: BracketImportTeam[]) {
       }
       seenSeeds.add(team.seed);
     }
+
+    const expectedSeedMax = group.length;
+    if ([...seenSeeds].some((seed) => seed > expectedSeedMax)) {
+      issues.push(
+        `Bracket import contains out-of-range seeds in ${region}. Expected seeds 1-${expectedSeedMax}.`
+      );
+    }
+
+    for (let seed = 1; seed <= expectedSeedMax; seed += 1) {
+      if (!seenSeeds.has(seed)) {
+        issues.push(`Bracket import is missing seed ${seed} in ${region}.`);
+      }
+    }
   }
 
   return issues;

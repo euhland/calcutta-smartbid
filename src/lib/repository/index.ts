@@ -612,6 +612,9 @@ class LocalSessionRepository implements SessionRepository {
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
     session.bracketImport = parseSessionBracketImport(
       input.csvContent,
       input.sourceName,
@@ -650,6 +653,9 @@ class LocalSessionRepository implements SessionRepository {
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
     session.analysisImport = parseSessionAnalysisImport(
       input.csvContent,
       input.sourceName,
@@ -1567,6 +1573,9 @@ class SupabaseSessionRepository implements SessionRepository {
     input: { csvContent: string; sourceName: string; fileName?: string | null }
   ) {
     const session = await this.requireSession(sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
     session.bracketImport = parseSessionBracketImport(
       input.csvContent,
       input.sourceName,
@@ -1604,6 +1613,9 @@ class SupabaseSessionRepository implements SessionRepository {
     input: { csvContent: string; sourceName: string; fileName?: string | null }
   ) {
     const session = await this.requireSession(sessionId);
+    if (session.purchases.length > 0) {
+      throw new Error("Cannot replace projections after purchases have been recorded.");
+    }
     session.analysisImport = parseSessionAnalysisImport(
       input.csvContent,
       input.sourceName,
@@ -2262,6 +2274,8 @@ async function applyProjectionImport(
   }
 
   const projectionFeed = await loadProjectionsFromSource(dataSource, dataSources);
+  session.bracketImport = null;
+  session.analysisImport = null;
   session.baseProjections = sortProjections(projectionFeed.teams);
   session.projectionProvider = projectionFeed.provider;
   session.activeDataSource = dataSource;
@@ -2293,14 +2307,31 @@ function applySessionManagedImports(session: StoredAuctionSession) {
     throw new Error("Cannot replace projections after purchases have been recorded.");
   }
 
+  const simulationIterations = session.simulationSnapshot?.iterations;
   session.updatedAt = new Date().toISOString();
+  session.activeDataSource = {
+    key: "session:managed-imports",
+    name: "Session-managed imports",
+    kind: "csv"
+  };
+  session.projectionProvider = "Session-managed imports";
+  session.baseProjections = [];
+  session.projections = [];
+  session.simulationSnapshot = null;
+  session.liveState = {
+    ...session.liveState,
+    nominatedTeamId: null,
+    currentBid: 0,
+    soldTeamIds: [],
+    lastUpdatedAt: session.updatedAt
+  };
 
   if (!session.bracketImport || !session.analysisImport) {
     session.importReadiness = buildSessionImportReadiness({
       bracketImport: session.bracketImport,
       analysisImport: session.analysisImport,
-      baseProjections: session.baseProjections,
-      simulationSnapshot: session.simulationSnapshot
+      baseProjections: [],
+      simulationSnapshot: null
     });
     return;
   }
@@ -2310,7 +2341,7 @@ function applySessionManagedImports(session: StoredAuctionSession) {
     bracketImport: session.bracketImport,
     analysisImport: session.analysisImport,
     baseProjections: merge.projections,
-    simulationSnapshot: session.simulationSnapshot
+    simulationSnapshot: null
   });
 
   if (merge.issues.length > 0) {
@@ -2328,6 +2359,11 @@ function applySessionManagedImports(session: StoredAuctionSession) {
     session.projectionOverrides,
     session.baseProjections
   );
+  session.teamClassifications = filterTeamClassificationsForProjectionSet(
+    session.teamClassifications,
+    session.baseProjections
+  );
+  session.teamNotes = filterTeamNotesForProjectionSet(session.teamNotes, session.baseProjections);
   session.projections = applyProjectionOverrides(session.baseProjections, session.projectionOverrides);
   session.liveState = {
     ...session.liveState,
@@ -2336,7 +2372,7 @@ function applySessionManagedImports(session: StoredAuctionSession) {
     soldTeamIds: [],
     lastUpdatedAt: session.updatedAt
   };
-  recalculateSessionState(session, session.simulationSnapshot?.iterations);
+  recalculateSessionState(session, simulationIterations);
   session.importReadiness = buildSessionImportReadiness({
     bracketImport: session.bracketImport,
     analysisImport: session.analysisImport,
@@ -2351,6 +2387,8 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
   }
 
   const projectionFeed = await loadProjectionProvider(provider);
+  session.bracketImport = null;
+  session.analysisImport = null;
   session.baseProjections = sortProjections(projectionFeed.teams);
   session.projectionProvider = projectionFeed.provider;
   session.activeDataSource = provider === "mock" ? builtinMockSource : session.activeDataSource;

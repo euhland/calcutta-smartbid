@@ -189,4 +189,15 @@ describe("session-managed imports", () => {
     expect(merged.projections.find((team) => team.name === "UConn")?.rating).toBe(0.94);
     expect(merged.projections.find((team) => team.name === "Omaha")?.rating).toBe(0.71);
   });
+
+  it("flags missing seed lines inside an otherwise full region", () => {
+    const rows = buildBracketCsv().split("\n");
+    rows[16] = "east-16,East Team 16,EA16,East,17,East-16,East Site,East Pod";
+    const bracket = parseSessionBracketImport(rows.join("\n"), "Broken Bracket");
+    const analysis = parseSessionAnalysisImport(buildAnalysisCsv(), "Metrics Feed");
+    const merged = mergeBracketAndAnalysisImports(bracket, analysis);
+
+    expect(merged.issues).toContain("Bracket import contains out-of-range seeds in East. Expected seeds 1-16.");
+    expect(merged.issues).toContain("Bracket import is missing seed 16 in East.");
+  });
 });
