@@ -50,6 +50,22 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     projectionProvider: session.projectionProvider,
     activeDataSource: session.activeDataSource,
     finalFourPairings: session.finalFourPairings,
+    bracketImport: session.bracketImport,
+    analysisImport: session.analysisImport,
+    importReadiness:
+      session.importReadiness ??
+      {
+        mode: "legacy",
+        status: "ready",
+        summary: "Using the active data source.",
+        issues: [],
+        warnings: [],
+        hasBracket: false,
+        hasAnalysis: false,
+        mergedProjectionCount: session.projections.length,
+        lastBracketImportAt: null,
+        lastAnalysisImportAt: null
+      },
     liveState: session.liveState,
     purchases: session.purchases,
     simulationSnapshot: session.simulationSnapshot
@@ -58,6 +74,12 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
 
 export function buildDashboard(session: AuctionSession | StoredAuctionSession, storageBackend: StorageBackend): AuctionDashboard {
   const publicSession = sanitizeSessionForClient(session);
+  if (
+    publicSession.importReadiness.mode === "session-imports" &&
+    publicSession.importReadiness.status !== "ready"
+  ) {
+    throw new Error(publicSession.importReadiness.summary);
+  }
   const nominatedTeam = publicSession.projections.find((projection) => projection.id === publicSession.liveState.nominatedTeamId) ?? null;
   const soldLookup = new Map(publicSession.purchases.map((purchase) => [purchase.teamId, purchase]));
   const availableTeams = publicSession.projections.filter((projection) => !soldLookup.has(projection.id));
