@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  applyBracketWinnerMutation,
+  createEmptyBracketState,
+  normalizeBracketState
+} from "@/lib/bracket";
+import {
   buildDefaultMothershipFunding,
   deriveLegacyBudgetSeed,
   deriveSyndicateEstimateState,
@@ -44,6 +49,7 @@ import {
   AuthenticatedMember,
   AuctionDashboard,
   AuctionSession,
+  BracketState,
   CsvAnalysisPortfolio,
   DataImportRun,
   DataSource,
@@ -69,6 +75,7 @@ import {
   createDataSourceSchema,
   createPlatformUserSchema,
   createSessionSchema,
+  updateBracketGameSchema,
   saveTeamNoteSchema,
   createSyndicateCatalogSchema,
   updateDataSourceSchema,
@@ -239,6 +246,7 @@ export interface SessionRepository {
   clearTeamClassification(sessionId: string, teamId: string): Promise<AuctionDashboard>;
   saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput): Promise<AuctionDashboard>;
   clearTeamNote(sessionId: string, teamId: string): Promise<AuctionDashboard>;
+  updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null): Promise<AuctionDashboard>;
   getCsvAnalysisPortfolio(sessionId: string, memberId: string): Promise<CsvAnalysisPortfolio>;
   saveCsvAnalysisPortfolio(
     sessionId: string,
@@ -806,6 +814,15 @@ class LocalSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    const parsed = updateBracketGameSchema.parse({ winnerTeamId });
+    applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
   async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {
     const store = await this.readStore();
     findSession(store.sessions, sessionId);
@@ -1147,6 +1164,7 @@ class SupabaseSessionRepository implements SessionRepository {
         simulationSnapshot: (snapshotResult.data?.payload as AuctionSession["simulationSnapshot"]) ?? null
       }),
       liveState: sessionResult.data.live_state as AuctionSession["liveState"],
+      bracketState: (sessionResult.data.bracket_state as BracketState | null) ?? createEmptyBracketState(),
       purchases: (((purchasesResult.data as Array<Record<string, unknown>> | null) ?? []).map(
         (row) => ({
           id: String(row.id),
@@ -1793,6 +1811,14 @@ class SupabaseSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
+    const session = await this.requireSession(sessionId);
+    const parsed = updateBracketGameSchema.parse({ winnerTeamId });
+    applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
+    await this.persistBracketState(session);
+    return buildDashboard(session, this.backend);
+  }
+
   async getCsvAnalysisPortfolio(sessionId: string, memberId: string) {
     await this.requireSession(sessionId);
     const client = requireSupabaseClient();
@@ -1955,6 +1981,7 @@ class SupabaseSessionRepository implements SessionRepository {
       bracket_import: session.bracketImport,
       analysis_import: session.analysisImport,
       live_state: session.liveState,
+      bracket_state: session.bracketState,
       created_at: session.createdAt,
       updated_at: session.updatedAt
     });
@@ -2191,6 +2218,17 @@ class SupabaseSessionRepository implements SessionRepository {
     });
     throwOnSupabaseError(noteResult.error);
   }
+
+  private async persistBracketState(session: StoredAuctionSession) {
+    await updateAuctionSessionRow(
+      requireSupabaseClient(),
+      {
+        bracket_state: session.bracketState,
+        updated_at: session.updatedAt
+      },
+      session.id
+    );
+  }
 }
 
 async function createSessionModel(input: CreateSessionInput, refs: ReferenceData) {
@@ -2254,6 +2292,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
       soldTeamIds: [],
       lastUpdatedAt: timestamp
     },
+    bracketState: createEmptyBracketState(),
     purchases: [],
     simulationSnapshot: null
   });
@@ -2299,6 +2338,7 @@ async function applyProjectionImport(
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
   };
+  session.bracketState = createEmptyBracketState();
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
@@ -2412,6 +2452,7 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
   };
+  session.bracketState = createEmptyBracketState();
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
@@ -3157,6 +3198,7 @@ function normalizeSessionShape(
     session.teamNotes ?? {},
     session.baseProjections ?? session.projections ?? []
   );
+  const bracketState = normalizeBracketState(session.bracketState);
   const baseProjections = sortProjections(session.baseProjections ?? session.projections ?? []);
   const projections =
     session.projections && session.baseProjections
@@ -3246,7 +3288,8 @@ function normalizeSessionShape(
       simulationSnapshot: session.simulationSnapshot ?? null
     }),
     teamClassifications,
-    teamNotes
+    teamNotes,
+    bracketState
   };
 }
 

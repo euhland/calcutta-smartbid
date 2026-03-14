@@ -49,6 +49,9 @@ alter table public.auction_sessions
   add column if not exists archived_by_email text null;
 
 alter table public.auction_sessions
+  add column if not exists bracket_state jsonb not null default '{}'::jsonb;
+
+alter table public.auction_sessions
   add column if not exists bracket_import jsonb null;
 
 alter table public.auction_sessions
