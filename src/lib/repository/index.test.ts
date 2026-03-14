@@ -210,6 +210,210 @@ describe("repository funding model", () => {
       estimateExceeded: false
     });
   });
+
+  it("supports separate bracket and analysis imports for a session", async () => {
+    const repository = await loadRepository();
+    const operator = await repository.createPlatformUser({
+      name: "Operator",
+      email: "operator@example.com"
+    });
+    const mothership = await repository.createSyndicateCatalogEntry({
+      name: "Mothership"
+    });
+    const riverboat = await repository.createSyndicateCatalogEntry({
+      name: "Riverboat"
+    });
+
+    const session = await repository.createSession({
+      name: "Selection Sunday Test",
+      sharedAccessCode: "selection26",
+      accessAssignments: [{ platformUserId: operator.id, role: "admin" }],
+      catalogSyndicateIds: [mothership.id, riverboat.id],
+      payoutRules: {
+        ...getDefaultPayoutRules(),
+        projectedPot: 120000
+      },
+      analysisSettings: {
+        targetTeamCount: 8,
+        maxSingleTeamPct: 22
+      },
+      dataSourceKey: "builtin:mock",
+      simulationIterations: 1000
+    });
+
+    const regions = ["East", "West", "South", "Midwest"];
+    const bracketCsv = [
+      "id,name,shortName,region,seed,regionSlot",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            region,
+            String(seed),
+            `${region}-${seed}`
+          ].join(",");
+        })
+      )
+    ].join("\n");
+    const analysisCsv = [
+      "teamId,name,shortName,rating,offense,defense,tempo",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            String(100 - seed * 0.3),
+            String(121 - seed * 0.25),
+            String(92 + seed * 0.2),
+            String(67 + (seed % 4))
+          ].join(",");
+        })
+      )
+    ].join("\n");
+
+    const afterBracket = await repository.importSessionBracket(session.id, {
+      csvContent: bracketCsv,
+      sourceName: "Official Bracket",
+      fileName: "bracket.csv"
+    });
+    expect(afterBracket.session.importReadiness.status).toBe("attention");
+    expect(afterBracket.session.importReadiness.hasBracket).toBe(true);
+    expect(afterBracket.session.importReadiness.hasAnalysis).toBe(false);
+
+    const afterAnalysis = await repository.importSessionAnalysis(session.id, {
+      csvContent: analysisCsv,
+      sourceName: "Metrics Feed",
+      fileName: "analysis.csv"
+    });
+    expect(afterAnalysis.session.importReadiness.status).toBe("ready");
+    expect(afterAnalysis.session.projectionProvider).toBe("Official Bracket + Metrics Feed");
+    expect(afterAnalysis.session.activeDataSource.name).toBe("Session-managed imports");
+  });
+
+  it("clears stale projections when a replacement session-managed import no longer merges cleanly", async () => {
+    const { repository, session } = await createBaselineSession();
+    const regions = ["East", "West", "South", "Midwest"];
+    const bracketCsv = [
+      "id,name,shortName,region,seed,regionSlot",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            region,
+            String(seed),
+            `${region}-${seed}`
+          ].join(",");
+        })
+      )
+    ].join("\n");
+    const analysisCsv = [
+      "teamId,name,shortName,rating,offense,defense,tempo",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            String(100 - seed * 0.3),
+            String(121 - seed * 0.25),
+            String(92 + seed * 0.2),
+            String(67 + (seed % 4))
+          ].join(",");
+        })
+      )
+    ].join("\n");
+
+    await repository.importSessionBracket(session.id, {
+      csvContent: bracketCsv,
+      sourceName: "Official Bracket"
+    });
+    const ready = await repository.importSessionAnalysis(session.id, {
+      csvContent: analysisCsv,
+      sourceName: "Metrics Feed"
+    });
+    expect(ready.session.importReadiness.status).toBe("ready");
+    expect(ready.session.projections).toHaveLength(64);
+
+    const replacementBracketCsv = bracketCsv.replace(
+      "east-1,East Team 1,EA1,East,1,East-1",
+      "totally-new-team,Totally New Team,TNT,East,1,East-1"
+    );
+    const broken = await repository.importSessionBracket(session.id, {
+      csvContent: replacementBracketCsv,
+      sourceName: "Replacement Bracket"
+    });
+
+    expect(broken.session.importReadiness.status).toBe("attention");
+    expect(broken.session.importReadiness.issues).toContain(
+      "Analysis import is missing metrics for Totally New Team."
+    );
+    expect(broken.session.projections).toHaveLength(0);
+    expect(broken.session.simulationSnapshot).toBeNull();
+  });
+
+  it("returns to legacy mode when a fallback source import runs", async () => {
+    const { repository, session } = await createBaselineSession();
+    const regions = ["East", "West", "South", "Midwest"];
+    const bracketCsv = [
+      "id,name,shortName,region,seed,regionSlot",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            region,
+            String(seed),
+            `${region}-${seed}`
+          ].join(",");
+        })
+      )
+    ].join("\n");
+    const analysisCsv = [
+      "teamId,name,shortName,rating,offense,defense,tempo",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            String(100 - seed * 0.3),
+            String(121 - seed * 0.25),
+            String(92 + seed * 0.2),
+            String(67 + (seed % 4))
+          ].join(",");
+        })
+      )
+    ].join("\n");
+
+    await repository.importSessionBracket(session.id, {
+      csvContent: bracketCsv,
+      sourceName: "Official Bracket"
+    });
+    await repository.importSessionAnalysis(session.id, {
+      csvContent: analysisCsv,
+      sourceName: "Metrics Feed"
+    });
+
+    const fallback = await repository.runSessionImport(session.id, "builtin:mock");
+
+    expect(fallback.session.bracketImport).toBeNull();
+    expect(fallback.session.analysisImport).toBeNull();
+    expect(fallback.session.importReadiness.mode).toBe("legacy");
+    expect(fallback.session.importReadiness.status).toBe("ready");
+    expect(fallback.session.activeDataSource.key).toBe("builtin:mock");
+  });
 });
 
 describe("repository team classifications", () => {

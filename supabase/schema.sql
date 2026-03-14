@@ -51,6 +51,12 @@ alter table public.auction_sessions
 alter table public.auction_sessions
   add column if not exists bracket_state jsonb not null default '{}'::jsonb;
 
+alter table public.auction_sessions
+  add column if not exists bracket_import jsonb null;
+
+alter table public.auction_sessions
+  add column if not exists analysis_import jsonb null;
+
 create unique index if not exists auction_sessions_shared_code_lookup_idx
   on public.auction_sessions(shared_code_lookup);
 
