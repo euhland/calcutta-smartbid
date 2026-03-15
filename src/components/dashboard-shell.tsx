@@ -141,7 +141,6 @@ export function DashboardShell({
   );
   const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
-  const winnerButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const activeTeamSaveInFlightRef = useRef(false);
   const pendingActiveTeamIdRef = useRef<string | null>(null);
   const pendingCommittedBidRef = useRef<number | null>(null);
@@ -532,6 +531,7 @@ export function DashboardShell({
 
     const target = event.target as HTMLElement | null;
     const tagName = target?.tagName ?? "";
+    const isButtonTarget = target?.closest("button") !== null;
     const isEditable =
       target !== null &&
       (tagName === "INPUT" ||
@@ -558,23 +558,16 @@ export function DashboardShell({
       return;
     }
 
-    if (event.key.toLowerCase() === "w" && !isEditable) {
-      event.preventDefault();
-      const focusTarget =
-        winnerButtonRefs.current[buyerId] ?? winnerButtonRefs.current[dashboard.ledger[0]?.id ?? ""];
-      focusTarget?.focus();
-      return;
-    }
-
     if (
       event.key === "Enter" &&
       activeView === "auction" &&
+      !isButtonTarget &&
       (tagName === "INPUT" || !isEditable)
     ) {
       event.preventDefault();
       void saveLiveState();
     }
-  }, [activeView, buyerId, dashboard.ledger, saveLiveState]);
+  }, [activeView, saveLiveState]);
 
   useEffect(() => {
     if (viewerMode) {
@@ -1000,7 +993,6 @@ export function DashboardShell({
                   <div className="shortcut-legend">
                     <div className="shortcut-legend__row"><kbd>/</kbd><span>Focus team</span></div>
                     <div className="shortcut-legend__row"><kbd>B</kbd><span>Focus bid</span></div>
-                    <div className="shortcut-legend__row"><kbd>W</kbd><span>Focus winner</span></div>
                     <div className="shortcut-legend__row"><kbd>↵</kbd><span>Save board</span></div>
                   </div>
                 </div>
@@ -1034,7 +1026,7 @@ export function DashboardShell({
                   </label>
 
                   <label className="field-shell auction-controls__field auction-controls__field--bid">
-                    <span>Current bid{isLiveStateDirty ? " — unsaved" : ""}</span>
+                    <span>Current bid</span>
                     <div className="live-bid-field">
                       <input
                         ref={bidInputRef}
@@ -1050,33 +1042,6 @@ export function DashboardShell({
                         onFocus={(event) => event.target.select()}
                         onClick={(event) => event.currentTarget.select()}
                       />
-                      <button
-                        type="button"
-                        data-live-bid-blur-ignore="true"
-                        className={
-                          isLiveStateDirty
-                            ? "live-bid-save live-bid-save--dirty"
-                            : "live-bid-save"
-                        }
-                        aria-label={
-                          isSavingLiveState
-                            ? "Saving current bid"
-                            : isLiveStateDirty
-                              ? "Save current bid to board"
-                              : "Current bid is synced"
-                        }
-                        title={
-                          isSavingLiveState
-                            ? "Saving current bid"
-                            : isLiveStateDirty
-                              ? "Save current bid to board"
-                              : "Current bid is synced"
-                        }
-                        disabled={isSavingLiveState || !isLiveStateDirty}
-                        onClick={() => void saveLiveState()}
-                      >
-                        {isSavingLiveState ? "…" : isLiveStateDirty ? "↵" : "✓"}
-                      </button>
                     </div>
                   </label>
 
@@ -1088,9 +1053,6 @@ export function DashboardShell({
                         return (
                           <button
                             key={syndicate.id}
-                            ref={(node) => {
-                              winnerButtonRefs.current[syndicate.id] = node;
-                            }}
                             type="button"
                             className={cn(
                               "button button-secondary auction-controls__winner-button",
