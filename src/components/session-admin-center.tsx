@@ -1332,6 +1332,9 @@ export function SessionAdminCenter({
               <span className="status-pill">
                 {config.session.importReadiness.mergedProjectionCount} merged teams
               </span>
+              <span className="status-pill">
+                {(config.session.auctionAssets ?? []).length} auction teams
+              </span>
             </div>
           </div>
 

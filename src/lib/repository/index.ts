@@ -13,6 +13,7 @@ import {
   normalizeMothershipFunding,
   normalizeSyndicateEstimate
 } from "@/lib/funding";
+import { buildAuctionAssets } from "@/lib/auction-assets";
 import {
   getConfiguredMothershipSyndicateName,
   getConfiguredStorageBackend
@@ -47,6 +48,7 @@ import {
   AdminCenterData,
   AdminSessionSummary,
   AuthenticatedMember,
+  AuctionAsset,
   AuctionDashboard,
   AuctionSession,
   BracketState,
@@ -56,6 +58,7 @@ import {
   MothershipFundingModel,
   PlatformUser,
   ProjectionOverride,
+  PurchaseRecord,
   PayoutRules,
   SessionAnalysisImport,
   SessionAdminConfig,
@@ -226,11 +229,11 @@ export interface SessionRepository {
   rebuildSimulation(sessionId: string, iterations?: number): Promise<AuctionDashboard>;
   updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number }
+    patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
   ): Promise<AuctionDashboard>;
   recordPurchase(
     sessionId: string,
-    input: { teamId?: string; buyerSyndicateId: string; price: number }
+    input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ): Promise<AuctionDashboard>;
   undoPurchase(sessionId: string, purchaseId?: string): Promise<AuctionDashboard>;
   saveProjectionOverride(
@@ -743,7 +746,7 @@ class LocalSessionRepository implements SessionRepository {
 
   async updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number }
+    patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
@@ -754,7 +757,7 @@ class LocalSessionRepository implements SessionRepository {
 
   async recordPurchase(
     sessionId: string,
-    input: { teamId?: string; buyerSyndicateId: string; price: number }
+    input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
@@ -1120,6 +1123,12 @@ class SupabaseSessionRepository implements SessionRepository {
       ])
     );
 
+    const rawAuctionAssets = buildAuctionAssets({
+      baseProjections,
+      bracketImport:
+        (sessionResult.data.bracket_import as SessionBracketImport | null) ?? null
+    });
+
     return normalizeSessionShape({
       id: String(sessionResult.data.id),
       name: String(sessionResult.data.name),
@@ -1175,14 +1184,22 @@ class SupabaseSessionRepository implements SessionRepository {
       liveState: sessionResult.data.live_state as AuctionSession["liveState"],
       bracketState: (sessionResult.data.bracket_state as BracketState | null) ?? createEmptyBracketState(),
       purchases: (((purchasesResult.data as Array<Record<string, unknown>> | null) ?? []).map(
-        (row) => ({
-          id: String(row.id),
-          sessionId: String(row.session_id),
-          teamId: String(row.team_id),
-          buyerSyndicateId: String(row.buyer_syndicate_id),
-          price: Number(row.price),
-          createdAt: String(row.created_at)
-        })
+        (row) => {
+          const storedId = String(row.team_id);
+          const matchingAsset = rawAuctionAssets.find((asset) => asset.id === storedId) ?? null;
+
+          return {
+            id: String(row.id),
+            sessionId: String(row.session_id),
+            teamId: storedId,
+            assetId: matchingAsset?.id,
+            assetLabel: matchingAsset?.label,
+            projectionIds: matchingAsset?.projectionIds,
+            buyerSyndicateId: String(row.buyer_syndicate_id),
+            price: Number(row.price),
+            createdAt: String(row.created_at)
+          };
+        }
       )) as AuctionSession["purchases"],
       simulationSnapshot:
         (snapshotResult.data?.payload as AuctionSession["simulationSnapshot"]) ?? null
@@ -1726,7 +1743,7 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async updateLiveState(
     sessionId: string,
-    patch: { nominatedTeamId?: string | null; currentBid?: number }
+    patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
   ) {
     const session = await this.requireSession(sessionId);
     applyLiveStatePatch(session, patch);
@@ -1746,7 +1763,7 @@ class SupabaseSessionRepository implements SessionRepository {
 
   async recordPurchase(
     sessionId: string,
-    input: { teamId?: string; buyerSyndicateId: string; price: number }
+    input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ) {
     const session = await this.requireSession(sessionId);
     const purchase = applyPurchaseMutation(session, input);
@@ -2493,6 +2510,16 @@ function recalculateSessionState(session: StoredAuctionSession, iterations?: num
     session.baseProjections,
     session.projectionOverrides
   );
+  session.auctionAssets = buildAuctionAssets({
+    baseProjections: session.baseProjections,
+    bracketImport: session.bracketImport
+  });
+  session.liveState = normalizeLiveState(
+    session.liveState,
+    session.auctionAssets,
+    session.projections,
+    session.purchases
+  );
   session.simulationSnapshot = simulateAuctionField({
     sessionId: session.id,
     projections: session.projections,
@@ -2513,13 +2540,42 @@ function recalculateSessionState(session: StoredAuctionSession, iterations?: num
 
 function applyLiveStatePatch(
   session: StoredAuctionSession,
-  patch: { nominatedTeamId?: string | null; currentBid?: number }
+  patch: { nominatedAssetId?: string | null; nominatedTeamId?: string | null; currentBid?: number }
 ) {
+  const auctionAssets = session.auctionAssets ?? [];
   const nextState = {
     ...session.liveState,
     ...patch,
     lastUpdatedAt: new Date().toISOString()
   };
+
+  if (patch.nominatedAssetId !== undefined) {
+    if (patch.nominatedAssetId === null) {
+      nextState.nominatedAssetId = null;
+      nextState.nominatedTeamId = null;
+    } else {
+      const asset = auctionAssets.find((candidate) => candidate.id === patch.nominatedAssetId) ?? null;
+      if (!asset) {
+        throw new Error("Selected team does not exist in the tournament field.");
+      }
+      if ((nextState.soldAssetIds ?? []).includes(asset.id)) {
+        throw new Error("That team has already been sold.");
+      }
+
+      nextState.nominatedAssetId = asset.id;
+      nextState.nominatedTeamId = resolveRepresentativeProjectionId(asset, session.projections);
+    }
+  } else if (patch.nominatedTeamId) {
+    const asset = auctionAssets.find((candidate) => candidate.id === patch.nominatedTeamId) ?? null;
+    if (asset) {
+      if ((nextState.soldAssetIds ?? []).includes(asset.id)) {
+        throw new Error("That team has already been sold.");
+      }
+
+      nextState.nominatedAssetId = asset.id;
+      nextState.nominatedTeamId = resolveRepresentativeProjectionId(asset, session.projections);
+    }
+  }
 
   if (
     nextState.nominatedTeamId &&
@@ -2536,8 +2592,8 @@ function applyLiveStatePatch(
   }
 
   if (
-    patch.nominatedTeamId !== undefined &&
-    patch.nominatedTeamId !== session.liveState.nominatedTeamId &&
+    (patch.nominatedAssetId !== undefined || patch.nominatedTeamId !== undefined) &&
+    nextState.nominatedAssetId !== session.liveState.nominatedAssetId &&
     patch.currentBid === undefined
   ) {
     nextState.currentBid = 0;
@@ -2549,23 +2605,28 @@ function applyLiveStatePatch(
 
 function applyPurchaseMutation(
   session: StoredAuctionSession,
-  input: { teamId?: string; buyerSyndicateId: string; price: number }
+  input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
 ) {
   if (input.price <= 0) {
     throw new Error("Enter a bid greater than $0 before recording a purchase.");
   }
 
-  const teamId = input.teamId ?? session.liveState.nominatedTeamId;
-  if (!teamId) {
+  const auctionAssets = session.auctionAssets ?? [];
+  const assetId =
+    input.assetId ??
+    input.teamId ??
+    session.liveState.nominatedAssetId ??
+    session.liveState.nominatedTeamId;
+  if (!assetId) {
     throw new Error("No team is currently nominated.");
   }
 
-  const team = session.projections.find((projection) => projection.id === teamId);
-  if (!team) {
-    throw new Error("The nominated team is missing from projections.");
+  const asset = auctionAssets.find((candidate) => candidate.id === assetId) ?? null;
+  if (!asset) {
+    throw new Error("The nominated team is missing from the tournament field.");
   }
 
-  if (session.purchases.some((purchase) => purchase.teamId === teamId)) {
+  if (session.purchases.some((purchase) => (purchase.assetId ?? purchase.teamId) === asset.id)) {
     throw new Error("That team has already been sold.");
   }
 
@@ -2577,10 +2638,17 @@ function applyPurchaseMutation(
   }
 
   const createdAt = new Date().toISOString();
+  const representativeProjectionId =
+    asset.projectionIds.find((projectionId) =>
+      session.projections.some((projection) => projection.id === projectionId)
+    ) ?? asset.projectionIds[0] ?? asset.id;
   const purchase = {
     id: createId("purchase"),
     sessionId: session.id,
-    teamId,
+    teamId: representativeProjectionId,
+    assetId: asset.id,
+    assetLabel: asset.label,
+    projectionIds: asset.projectionIds,
     buyerSyndicateId: syndicate.id,
     price: roundCurrency(input.price),
     createdAt
@@ -2590,8 +2658,10 @@ function applyPurchaseMutation(
   session.liveState = {
     ...session.liveState,
     currentBid: 0,
+    nominatedAssetId: null,
     nominatedTeamId: null,
-    soldTeamIds: [...session.liveState.soldTeamIds, teamId],
+    soldAssetIds: [...(session.liveState.soldAssetIds ?? []), asset.id],
+    soldTeamIds: [...new Set([...session.liveState.soldTeamIds, ...asset.projectionIds])],
     lastUpdatedAt: createdAt
   };
   session.syndicates = recalculateSyndicateValues(session);
@@ -2610,12 +2680,27 @@ function undoPurchaseMutation(session: StoredAuctionSession, purchaseId?: string
   }
 
   const updatedAt = new Date().toISOString();
+  const restoredProjectionIds =
+    purchase.projectionIds && purchase.projectionIds.length > 0
+      ? purchase.projectionIds
+      : [purchase.teamId];
+  const restoredTeamId =
+    restoredProjectionIds.find((teamId) =>
+      session.projections.some((projection) => projection.id === teamId)
+    ) ?? null;
+  const restoredAssetId = purchase.assetId ?? purchase.teamId;
   session.purchases = session.purchases.filter((candidate) => candidate.id !== purchase.id);
   session.liveState = {
     ...session.liveState,
-    nominatedTeamId: purchase.teamId,
+    nominatedAssetId: restoredAssetId,
+    nominatedTeamId: restoredTeamId,
     currentBid: purchase.price,
-    soldTeamIds: session.liveState.soldTeamIds.filter((teamId) => teamId !== purchase.teamId),
+    soldAssetIds: (session.liveState.soldAssetIds ?? []).filter(
+      (assetId) => assetId !== restoredAssetId
+    ),
+    soldTeamIds: session.liveState.soldTeamIds.filter(
+      (teamId) => !restoredProjectionIds.includes(teamId)
+    ),
     lastUpdatedAt: updatedAt
   };
   session.syndicates = recalculateSyndicateValues(session);
@@ -2737,7 +2822,9 @@ function recalculateSyndicateValues(session: StoredAuctionSession): Syndicate[] 
       (purchase) => purchase.buyerSyndicateId === syndicate.id
     );
     const spend = ownedPurchases.reduce((total, purchase) => total + purchase.price, 0);
-    const ownedTeamIds = ownedPurchases.map((purchase) => purchase.teamId);
+    const ownedTeamIds = [...new Set(
+      ownedPurchases.flatMap((purchase) => purchase.projectionIds ?? [purchase.teamId])
+    )];
     const portfolioExpectedValue = ownedTeamIds.reduce(
       (total, teamId) =>
         total + (session.simulationSnapshot?.teamResults[teamId]?.expectedGrossPayout ?? 0),
@@ -3262,6 +3349,16 @@ function normalizeSessionShape(
       : applyProjectionOverrides(baseProjections, projectionOverrides);
   const bracketImport = normalizeBracketImport(session.bracketImport);
   const analysisImport = normalizeAnalysisImport(session.analysisImport);
+  const auctionAssets = buildAuctionAssets({
+    baseProjections,
+    bracketImport
+  });
+  const liveState = normalizeLiveState(
+    session.liveState,
+    auctionAssets,
+    projections,
+    session.purchases
+  );
   const normalizedSyndicates: Syndicate[] = (session.syndicates ?? []).map((syndicate) => {
     const estimate = normalizeSyndicateEstimate(syndicate, seedBudget);
     const estimateState = deriveSyndicateEstimateState(estimate.estimatedBudget, syndicate.spend ?? 0);
@@ -3343,6 +3440,8 @@ function normalizeSessionShape(
       baseProjections,
       simulationSnapshot: session.simulationSnapshot ?? null
     }),
+    auctionAssets,
+    liveState,
     teamClassifications,
     teamNotes,
     bracketState
@@ -3356,6 +3455,100 @@ function sortProjections(projections: TeamProjection[]) {
     }
     return left.region.localeCompare(right.region);
   });
+}
+
+function normalizeLiveState(
+  liveState: StoredAuctionSession["liveState"] | undefined,
+  auctionAssets: NonNullable<StoredAuctionSession["auctionAssets"]>,
+  projections: TeamProjection[],
+  purchases: PurchaseRecord[]
+) {
+  const purchasedAssetIds = purchases
+    .map((purchase) => purchase.assetId ?? purchase.teamId)
+    .filter((assetId) => auctionAssets.some((asset) => asset.id === assetId));
+  const purchasedProjectionIds = purchases.flatMap(
+    (purchase) => purchase.projectionIds ?? [purchase.teamId]
+  );
+  const normalized = {
+    nominatedAssetId: liveState?.nominatedAssetId ?? null,
+    nominatedTeamId: liveState?.nominatedTeamId ?? null,
+    currentBid: liveState?.currentBid ?? 0,
+    soldAssetIds: [...new Set([...(liveState?.soldAssetIds ?? []), ...purchasedAssetIds])],
+    soldTeamIds: [...new Set([...(liveState?.soldTeamIds ?? []), ...purchasedProjectionIds])],
+    lastUpdatedAt: liveState?.lastUpdatedAt ?? new Date(0).toISOString()
+  };
+
+  if (
+    normalized.nominatedAssetId &&
+    !auctionAssets.some((asset) => asset.id === normalized.nominatedAssetId)
+  ) {
+    normalized.nominatedAssetId = null;
+  }
+
+  if (normalized.nominatedAssetId) {
+    const asset = auctionAssets.find((candidate) => candidate.id === normalized.nominatedAssetId) ?? null;
+    normalized.nominatedTeamId = asset
+      ? resolveRepresentativeProjectionId(asset, projections)
+      : null;
+  } else if (normalized.nominatedTeamId) {
+    const matchingAsset =
+      auctionAssets.find((asset) => asset.projectionIds.includes(normalized.nominatedTeamId!)) ?? null;
+    normalized.nominatedAssetId = matchingAsset?.id ?? null;
+  } else {
+    normalized.nominatedAssetId = auctionAssets[0]?.id ?? null;
+    normalized.nominatedTeamId = auctionAssets[0]
+      ? resolveRepresentativeProjectionId(auctionAssets[0], projections)
+      : null;
+  }
+
+  normalized.soldAssetIds = normalized.soldAssetIds.filter((assetId) =>
+    auctionAssets.some((asset) => asset.id === assetId)
+  );
+  normalized.soldTeamIds = normalized.soldTeamIds.filter((teamId) =>
+    projections.some((projection) => projection.id === teamId)
+  );
+
+  return normalized;
+}
+
+function resolveRepresentativeProjectionId(
+  asset: AuctionAsset,
+  projections: TeamProjection[]
+) {
+  const directProjection = asset.projectionIds.find((projectionId) =>
+    projections.some((projection) => projection.id === projectionId)
+  );
+  if (directProjection) {
+    return directProjection;
+  }
+
+  const matchingTeamId = asset.memberTeamIds.find((teamId) =>
+    projections.some((projection) => projection.id === teamId)
+  );
+  if (matchingTeamId) {
+    return matchingTeamId;
+  }
+
+  if (asset.seedRange) {
+    return (
+      projections.find(
+        (projection) =>
+          projection.region === asset.region &&
+          projection.seed >= asset.seedRange![0] &&
+          projection.seed <= asset.seedRange![1]
+      )?.id ?? null
+    );
+  }
+
+  if (asset.seed !== null) {
+    return (
+      projections.find(
+        (projection) => projection.region === asset.region && projection.seed === asset.seed
+      )?.id ?? null
+    );
+  }
+
+  return null;
 }
 
 function normalizePayoutRules(
