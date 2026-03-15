@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  applyBracketWinnerMutation,
+  createEmptyBracketState,
+  normalizeBracketState
+} from "@/lib/bracket";
+import {
   buildDefaultMothershipFunding,
   deriveLegacyBudgetSeed,
   deriveSyndicateEstimateState,
@@ -46,6 +51,7 @@ import {
   AuctionAsset,
   AuctionDashboard,
   AuctionSession,
+  BracketState,
   CsvAnalysisPortfolio,
   DataImportRun,
   DataSource,
@@ -72,6 +78,7 @@ import {
   createDataSourceSchema,
   createPlatformUserSchema,
   createSessionSchema,
+  updateBracketGameSchema,
   saveTeamNoteSchema,
   createSyndicateCatalogSchema,
   updateDataSourceSchema,
@@ -228,6 +235,7 @@ export interface SessionRepository {
     sessionId: string,
     input: { assetId?: string; teamId?: string; buyerSyndicateId: string; price: number }
   ): Promise<AuctionDashboard>;
+  undoPurchase(sessionId: string, purchaseId?: string): Promise<AuctionDashboard>;
   saveProjectionOverride(
     sessionId: string,
     teamId: string,
@@ -242,6 +250,7 @@ export interface SessionRepository {
   clearTeamClassification(sessionId: string, teamId: string): Promise<AuctionDashboard>;
   saveTeamNote(sessionId: string, teamId: string, input: TeamNoteInput): Promise<AuctionDashboard>;
   clearTeamNote(sessionId: string, teamId: string): Promise<AuctionDashboard>;
+  updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null): Promise<AuctionDashboard>;
   getCsvAnalysisPortfolio(sessionId: string, memberId: string): Promise<CsvAnalysisPortfolio>;
   saveCsvAnalysisPortfolio(
     sessionId: string,
@@ -757,6 +766,14 @@ class LocalSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async undoPurchase(sessionId: string, purchaseId?: string) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    undoPurchaseMutation(session, purchaseId);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
   async saveProjectionOverride(sessionId: string, teamId: string, input: ProjectionOverrideInput) {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
@@ -805,6 +822,15 @@ class LocalSessionRepository implements SessionRepository {
     const store = await this.readStore();
     const session = findSession(store.sessions, sessionId);
     clearTeamNoteMutation(session, teamId);
+    await this.writeStore(store);
+    return buildDashboard(session, this.backend);
+  }
+
+  async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
+    const store = await this.readStore();
+    const session = findSession(store.sessions, sessionId);
+    const parsed = updateBracketGameSchema.parse({ winnerTeamId });
+    applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
     await this.writeStore(store);
     return buildDashboard(session, this.backend);
   }
@@ -1156,6 +1182,7 @@ class SupabaseSessionRepository implements SessionRepository {
         simulationSnapshot: (snapshotResult.data?.payload as AuctionSession["simulationSnapshot"]) ?? null
       }),
       liveState: sessionResult.data.live_state as AuctionSession["liveState"],
+      bracketState: (sessionResult.data.bracket_state as BracketState | null) ?? createEmptyBracketState(),
       purchases: (((purchasesResult.data as Array<Record<string, unknown>> | null) ?? []).map(
         (row) => {
           const storedId = String(row.team_id);
@@ -1764,6 +1791,29 @@ class SupabaseSessionRepository implements SessionRepository {
     return buildDashboard(session, this.backend);
   }
 
+  async undoPurchase(sessionId: string, purchaseId?: string) {
+    const session = await this.requireSession(sessionId);
+    const purchase = undoPurchaseMutation(session, purchaseId);
+    const client = requireSupabaseClient();
+
+    const result = await client.rpc("undo_purchase_transaction", {
+      p_session_id: sessionId,
+      p_purchase_id: purchase.id,
+      p_live_state: session.liveState,
+      p_updated_at: session.updatedAt,
+      p_syndicates: session.syndicates.map((syndicate) => ({
+        id: syndicate.id,
+        spend: syndicate.spend,
+        remaining_bankroll: syndicate.remainingBankroll,
+        owned_team_ids: syndicate.ownedTeamIds,
+        portfolio_expected_value: syndicate.portfolioExpectedValue
+      }))
+    });
+
+    throwOnSupabaseError(result.error);
+    return buildDashboard(session, this.backend);
+  }
+
   async saveProjectionOverride(sessionId: string, teamId: string, input: ProjectionOverrideInput) {
     const session = await this.requireSession(sessionId);
     applyProjectionOverrideMutation(session, teamId, input);
@@ -1807,6 +1857,14 @@ class SupabaseSessionRepository implements SessionRepository {
     const session = await this.requireSession(sessionId);
     clearTeamNoteMutation(session, teamId);
     await this.persistTeamNoteState(session, teamId, true);
+    return buildDashboard(session, this.backend);
+  }
+
+  async updateBracketGame(sessionId: string, gameId: string, winnerTeamId: string | null) {
+    const session = await this.requireSession(sessionId);
+    const parsed = updateBracketGameSchema.parse({ winnerTeamId });
+    applyBracketWinnerMutation(session, gameId, parsed.winnerTeamId);
+    await this.persistBracketState(session);
     return buildDashboard(session, this.backend);
   }
 
@@ -1972,6 +2030,7 @@ class SupabaseSessionRepository implements SessionRepository {
       bracket_import: session.bracketImport,
       analysis_import: session.analysisImport,
       live_state: session.liveState,
+      bracket_state: session.bracketState,
       created_at: session.createdAt,
       updated_at: session.updatedAt
     });
@@ -2208,6 +2267,17 @@ class SupabaseSessionRepository implements SessionRepository {
     });
     throwOnSupabaseError(noteResult.error);
   }
+
+  private async persistBracketState(session: StoredAuctionSession) {
+    await updateAuctionSessionRow(
+      requireSupabaseClient(),
+      {
+        bracket_state: session.bracketState,
+        updated_at: session.updatedAt
+      },
+      session.id
+    );
+  }
 }
 
 async function createSessionModel(input: CreateSessionInput, refs: ReferenceData) {
@@ -2271,6 +2341,7 @@ async function createSessionModel(input: CreateSessionInput, refs: ReferenceData
       soldTeamIds: [],
       lastUpdatedAt: timestamp
     },
+    bracketState: createEmptyBracketState(),
     purchases: [],
     simulationSnapshot: null
   });
@@ -2316,6 +2387,7 @@ async function applyProjectionImport(
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
   };
+  session.bracketState = createEmptyBracketState();
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
@@ -2429,6 +2501,7 @@ async function applyProjectionImportLegacy(session: StoredAuctionSession, provid
     soldTeamIds: [],
     lastUpdatedAt: new Date().toISOString()
   };
+  session.bracketState = createEmptyBracketState();
   recalculateSessionState(session, session.simulationSnapshot?.iterations);
 }
 
@@ -2539,7 +2612,11 @@ function applyPurchaseMutation(
   }
 
   const auctionAssets = session.auctionAssets ?? [];
-  const assetId = input.assetId ?? session.liveState.nominatedAssetId ?? input.teamId ?? session.liveState.nominatedTeamId;
+  const assetId =
+    input.assetId ??
+    input.teamId ??
+    session.liveState.nominatedAssetId ??
+    session.liveState.nominatedTeamId;
   if (!assetId) {
     throw new Error("No team is currently nominated.");
   }
@@ -2585,6 +2662,45 @@ function applyPurchaseMutation(
   };
   session.syndicates = recalculateSyndicateValues(session);
   session.updatedAt = createdAt;
+  return purchase;
+}
+
+function undoPurchaseMutation(session: StoredAuctionSession, purchaseId?: string) {
+  const purchase = session.purchases[session.purchases.length - 1];
+  if (!purchase) {
+    throw new Error("No purchase is available to undo.");
+  }
+
+  if (purchaseId && purchase.id !== purchaseId) {
+    throw new Error("Only the most recent purchase can be undone.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const restoredProjectionIds =
+    purchase.projectionIds && purchase.projectionIds.length > 0
+      ? purchase.projectionIds
+      : [purchase.teamId];
+  const restoredTeamId =
+    restoredProjectionIds.find((teamId) =>
+      session.projections.some((projection) => projection.id === teamId)
+    ) ?? null;
+  const restoredAssetId = purchase.assetId ?? purchase.teamId;
+  session.purchases = session.purchases.filter((candidate) => candidate.id !== purchase.id);
+  session.liveState = {
+    ...session.liveState,
+    nominatedAssetId: restoredAssetId,
+    nominatedTeamId: restoredTeamId,
+    currentBid: purchase.price,
+    soldAssetIds: (session.liveState.soldAssetIds ?? []).filter(
+      (assetId) => assetId !== restoredAssetId
+    ),
+    soldTeamIds: session.liveState.soldTeamIds.filter(
+      (teamId) => !restoredProjectionIds.includes(teamId)
+    ),
+    lastUpdatedAt: updatedAt
+  };
+  session.syndicates = recalculateSyndicateValues(session);
+  session.updatedAt = updatedAt;
   return purchase;
 }
 
@@ -3219,6 +3335,7 @@ function normalizeSessionShape(
     session.teamNotes ?? {},
     session.baseProjections ?? session.projections ?? []
   );
+  const bracketState = normalizeBracketState(session.bracketState);
   const baseProjections = sortProjections(session.baseProjections ?? session.projections ?? []);
   const projections =
     session.projections && session.baseProjections
@@ -3320,7 +3437,8 @@ function normalizeSessionShape(
     auctionAssets,
     liveState,
     teamClassifications,
-    teamNotes
+    teamNotes,
+    bracketState
   };
 }
 
@@ -3813,6 +3931,12 @@ function throwOnSupabaseError(
       );
     }
 
+    if (isMissingUndoPurchaseFunctionError(error)) {
+      throw new Error(
+        "Undo purchase requires the latest Supabase schema update. Apply the SQL changes in supabase/schema.sql, then try again."
+      );
+    }
+
     throw new Error(error.message ?? "Supabase request failed.");
   }
 }
@@ -3849,6 +3973,24 @@ function isMissingSharedCodePlaintextColumnError(error: {
     rawText.includes("shared_code_plaintext") &&
     (rawText.includes("schema cache") ||
       rawText.includes("column") ||
+      rawText.includes("does not exist"))
+  );
+}
+
+function isMissingUndoPurchaseFunctionError(error: {
+  message?: string;
+  code?: string;
+  details?: string | null;
+}) {
+  const rawText = [error.message, error.details, error.code]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    rawText.includes("undo_purchase_transaction") &&
+    (rawText.includes("schema cache") ||
+      rawText.includes("function") ||
       rawText.includes("does not exist"))
   );
 }

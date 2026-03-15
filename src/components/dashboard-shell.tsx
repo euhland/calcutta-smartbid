@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import type { Route } from "next";
 import {
   useCallback,
   startTransition,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/types";
 import { TEAM_CLASSIFICATION_ORDER, getTeamClassificationMeta } from "@/lib/team-classifications";
 import { cn, formatCurrency, formatPercent, titleCaseStage } from "@/lib/utils";
+import { SessionBracket } from "@/components/session-bracket";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TeamClassificationBadge } from "@/components/team-classification-badge";
 
@@ -44,7 +46,7 @@ interface DashboardShellProps {
   currentMember: AuthenticatedMember;
 }
 
-type WorkspaceView = "auction" | "analysis" | "portfolio" | "overrides";
+type WorkspaceView = "auction" | "analysis" | "portfolio" | "bracket" | "overrides";
 
 interface ActiveOverrideRow {
   override: ProjectionOverride;
@@ -55,8 +57,12 @@ const viewLabels: Record<WorkspaceView, string> = {
   auction: "Auction",
   analysis: "Analysis",
   portfolio: "Portfolio",
+  bracket: "Bracket",
   overrides: "Overrides"
 };
+
+const viewerViews: WorkspaceView[] = ["auction", "bracket"];
+const editorViews: WorkspaceView[] = ["auction", "analysis", "portfolio", "bracket", "overrides"];
 
 const stoplightLabels: Record<BidRecommendation["stoplight"], string> = {
   buy: "Keep bidding",
@@ -78,6 +84,12 @@ function getRoleLabel(role: AuthenticatedMember["role"], scope: AuthenticatedMem
   return role === "admin" ? "Operator" : "Viewer";
 }
 
+function getWorkspacePath(sessionId: string, view: WorkspaceView) {
+  return (
+    view === "auction" ? `/session/${sessionId}` : `/session/${sessionId}?view=${view}`
+  ) as Route;
+}
+
 
 export function DashboardShell({
   sessionId,
@@ -87,11 +99,14 @@ export function DashboardShell({
   currentMember
 }: DashboardShellProps) {
   const router = useRouter();
+  const availableViews = viewerMode ? viewerViews : editorViews;
   const { dashboard, refresh, broadcastRefresh, replaceDashboard } = useSessionDashboard(
     sessionId,
     initialDashboard
   );
-  const [activeView, setActiveView] = useState<WorkspaceView>(initialView);
+  const [activeView, setActiveView] = useState<WorkspaceView>(
+    availableViews.includes(initialView) ? initialView : "auction"
+  );
   const [selectedAssetId, setSelectedAssetId] = useState(
     dashboard.session.liveState.nominatedAssetId ?? dashboard.nominatedAsset?.id ?? ""
   );
@@ -104,8 +119,10 @@ export function DashboardShell({
   );
   const [buyerId, setBuyerId] = useState(dashboard.focusSyndicate.id);
   const [isSavingLiveState, setIsSavingLiveState] = useState(false);
+  const [isUndoingPurchase, setIsUndoingPurchase] = useState(false);
   const [isSavingClassification, setIsSavingClassification] = useState(false);
   const [isSavingTeamNote, setIsSavingTeamNote] = useState(false);
+  const [isSavingBracket, setIsSavingBracket] = useState(false);
   const [overrideForm, setOverrideForm] = useState({
     rating: "",
     offense: "",
@@ -128,8 +145,15 @@ export function DashboardShell({
   const activeTeamSaveInFlightRef = useRef(false);
   const pendingActiveTeamIdRef = useRef<string | null>(null);
   const pendingCommittedBidRef = useRef<number | null>(null);
+  const parsedBidInputValue = parseBidInputValue(bidInputValue);
   const isLiveStateDirty =
-    bidInputValue.trim() === "" ? true : parseBidInputValue(bidInputValue) !== currentBid;
+    bidInputValue.trim() === "" ? true : parsedBidInputValue !== currentBid;
+
+  useEffect(() => {
+    if (!availableViews.includes(activeView)) {
+      setActiveView("auction");
+    }
+  }, [activeView, availableViews]);
 
   useEffect(() => {
     if (isLiveStateDirty && !viewerMode) {
@@ -270,6 +294,15 @@ export function DashboardShell({
     () => [...dashboard.soldAssets].slice(-4).reverse(),
     [dashboard.soldAssets]
   );
+  const lastPurchaseTeam = dashboard.lastPurchase
+    ? teamLookup.get(
+        dashboard.lastPurchase.projectionIds?.find((teamId) => teamLookup.has(teamId)) ??
+          dashboard.lastPurchase.teamId
+      ) ?? null
+    : null;
+  const lastPurchaseBuyer = dashboard.lastPurchase
+    ? syndicateLookup.get(dashboard.lastPurchase.buyerSyndicateId) ?? null
+    : null;
   const ownedTeamLookup = useMemo(
     () => new Map(dashboard.analysis.ownedTeams.map((team) => [team.teamId, team])),
     [dashboard.analysis.ownedTeams]
@@ -422,7 +455,7 @@ export function DashboardShell({
     setError(null);
     setNotice(null);
     setIsSavingLiveState(true);
-    const nextBid = parseBidInputValue(bidInputValue);
+    const nextBid = parsedBidInputValue;
     try {
       const response = await fetch(`/api/sessions/${sessionId}/live-state`, {
         method: "PATCH",
@@ -453,7 +486,38 @@ export function DashboardShell({
     } finally {
       setIsSavingLiveState(false);
     }
-  }, [bidInputValue, broadcastRefresh, refresh, selectedAssetId, sessionId]);
+  }, [broadcastRefresh, parsedBidInputValue, refresh, selectedAssetId, sessionId]);
+
+  const handleBidBlur = useCallback(
+    (event: React.FocusEvent<HTMLInputElement>) => {
+      const nextFocusTarget = event.relatedTarget as HTMLElement | null;
+
+      if (
+        nextFocusTarget?.dataset.liveBidBlurIgnore === "true" ||
+        isSavingLiveState ||
+        !isLiveStateDirty
+      ) {
+        return;
+      }
+
+      void saveLiveState();
+    },
+    [isLiveStateDirty, isSavingLiveState, saveLiveState]
+  );
+
+  const handleBidKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+        return;
+      }
+
+      event.preventDefault();
+      const delta = event.key === "ArrowUp" ? 100 : -100;
+      const nextBid = Math.max(0, parsedBidInputValue + delta);
+      setBidInputValue(formatBidInputValue(nextBid));
+    },
+    [parsedBidInputValue]
+  );
 
   const handleShortcut = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
@@ -516,8 +580,9 @@ export function DashboardShell({
   const recordPurchase = useCallback(async () => {
     setError(null);
     setNotice(null);
+    const nextBid = parsedBidInputValue;
 
-    if (currentBid <= 0) {
+    if (nextBid <= 0) {
       setError("Enter a bid greater than $0 before recording a purchase.");
       return;
     }
@@ -535,7 +600,7 @@ export function DashboardShell({
       body: JSON.stringify({
         assetId: selectedAssetId || undefined,
         buyerSyndicateId: buyerId,
-        price: currentBid
+        price: nextBid
       })
     });
 
@@ -545,12 +610,56 @@ export function DashboardShell({
       return;
     }
 
+    const nextDashboard = (await response.json()) as AuctionDashboard;
+    replaceDashboard(nextDashboard);
     setNotice("Purchase recorded.");
     void broadcastRefresh("purchase");
-    startTransition(() => {
-      void refresh();
-    });
-  }, [broadcastRefresh, buyerId, currentBid, refresh, selectedAssetId, sessionId]);
+  }, [broadcastRefresh, buyerId, parsedBidInputValue, replaceDashboard, selectedAssetId, sessionId]);
+
+  const undoPurchase = useCallback(async () => {
+    if (!dashboard.lastPurchase) {
+      setError("No purchase is available to undo.");
+      return;
+    }
+
+    setError(null);
+    setNotice(null);
+    setIsUndoingPurchase(true);
+
+    const purchaseToUndo = dashboard.lastPurchase;
+    const undoneTeamName = lastPurchaseTeam?.name ?? purchaseToUndo.teamId;
+
+    try {
+      const response = await fetch(
+        `/api/sessions/${sessionId}/purchases?purchaseId=${encodeURIComponent(purchaseToUndo.id)}`,
+        {
+          method: "DELETE"
+        }
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to undo purchase.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      setBuyerId(purchaseToUndo.buyerSyndicateId);
+      setNotice(`Undid purchase for ${undoneTeamName}.`);
+      void broadcastRefresh("purchase-undo");
+    } catch {
+      setError("Unable to undo purchase.");
+    } finally {
+      setIsUndoingPurchase(false);
+    }
+  }, [
+    broadcastRefresh,
+    dashboard.lastPurchase,
+    lastPurchaseTeam,
+    replaceDashboard,
+    sessionId
+  ]);
 
   async function saveProjectionOverride() {
     if (!overrideTeamId) {
@@ -762,6 +871,44 @@ export function DashboardShell({
     }
   }
 
+  function switchWorkspace(nextView: WorkspaceView) {
+    setActiveView(nextView);
+    router.replace(getWorkspacePath(sessionId, nextView));
+  }
+
+  async function saveBracketWinner(gameId: string, winnerTeamId: string | null) {
+    setError(null);
+    setNotice(null);
+    setIsSavingBracket(true);
+
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/bracket/games/${gameId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          winnerTeamId
+        })
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        setError(payload.error ?? "Unable to update bracket game.");
+        return;
+      }
+
+      const nextDashboard = (await response.json()) as AuctionDashboard;
+      replaceDashboard(nextDashboard);
+      setNotice(winnerTeamId ? "Bracket winner advanced." : "Bracket winner cleared.");
+      void broadcastRefresh("bracket");
+    } catch {
+      setError("Unable to update bracket game.");
+    } finally {
+      setIsSavingBracket(false);
+    }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", {
       method: "POST"
@@ -770,8 +917,19 @@ export function DashboardShell({
     router.refresh();
   }
 
+  const bracketWorkspace = (
+    <SessionBracket
+      bracket={dashboard.bracket}
+      canEdit={!viewerMode}
+      isSaving={viewerMode ? false : isSavingBracket}
+      notice={notice}
+      error={error}
+      onSelectWinner={viewerMode ? () => undefined : saveBracketWinner}
+    />
+  );
+
   return (
-    <main className="dashboard-page">
+    <main className={cn("dashboard-page", activeView === "bracket" && "dashboard-page--bracket")}>
       <header className="surface-card session-hero session-hero--slim">
         <div className="session-hero__copy">
           <p className="eyebrow">mothership smartbid™</p>
@@ -797,29 +955,29 @@ export function DashboardShell({
         </div>
       </header>
 
+      {availableViews.length > 1 ? (
+        <nav className="workspace-tabs" aria-label="Workspace views">
+          {availableViews.map((view) => (
+            <button
+              key={view}
+              type="button"
+              className={cn("workspace-tab", activeView === view && "workspace-tab--active")}
+              onClick={() => switchWorkspace(view)}
+            >
+              {viewLabels[view]}
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
       {viewerMode ? (
-        <ViewerBoard
-          dashboard={dashboard}
-          recommendation={recommendation}
-        />
+        activeView === "bracket" ? (
+          bracketWorkspace
+        ) : (
+          <ViewerBoard dashboard={dashboard} recommendation={recommendation} />
+        )
       ) : (
         <>
-          <nav className="workspace-tabs" aria-label="Workspace views">
-            {(Object.keys(viewLabels) as WorkspaceView[]).map((view) => (
-              <button
-                key={view}
-                type="button"
-                className={cn(
-                  "workspace-tab",
-                  activeView === view && "workspace-tab--active"
-                )}
-                onClick={() => setActiveView(view)}
-              >
-                {viewLabels[view]}
-              </button>
-            ))}
-          </nav>
-
           {activeView === "auction" ? (
             <section className="auction-layout">
               <div className="auction-layout__main">
@@ -1239,11 +1397,14 @@ export function DashboardShell({
                           onChange={(event) =>
                             setBidInputValue(formatBidInputText(event.target.value))
                           }
+                          onBlur={handleBidBlur}
+                          onKeyDown={handleBidKeyDown}
                           onFocus={(event) => event.target.select()}
                           onClick={(event) => event.currentTarget.select()}
                         />
                         <button
                           type="button"
+                          data-live-bid-blur-ignore="true"
                           className={
                             isLiveStateDirty
                               ? "live-bid-save live-bid-save--dirty"
@@ -1291,12 +1452,33 @@ export function DashboardShell({
                     <button
                       type="button"
                       className="button button-accent"
-                      disabled={currentBid <= 0 || !selectedAssetId}
+                      data-live-bid-blur-ignore="true"
+                      disabled={parsedBidInputValue <= 0 || !selectedAssetId}
                       onClick={() => void recordPurchase()}
                     >
                       Record purchase
                     </button>
+                    <button
+                      type="button"
+                      className="button button-secondary"
+                      data-live-bid-blur-ignore="true"
+                      disabled={!dashboard.lastPurchase || isUndoingPurchase}
+                      onClick={() => void undoPurchase()}
+                    >
+                      {isUndoingPurchase ? "Undoing..." : "Undo last purchase"}
+                    </button>
                   </div>
+
+                  {dashboard.lastPurchase ? (
+                    <p className="empty-copy">
+                      Last sale:{" "}
+                      <strong>{lastPurchaseTeam?.name ?? dashboard.lastPurchase.teamId}</strong> to{" "}
+                      <strong>
+                        {lastPurchaseBuyer?.name ?? dashboard.lastPurchase.buyerSyndicateId}
+                      </strong>{" "}
+                      for <strong>{formatCurrency(dashboard.lastPurchase.price)}</strong>
+                    </p>
+                  ) : null}
 
                   {notice ? <p className="notice-text">{notice}</p> : null}
                   {error ? <p className="error-text">{error}</p> : null}
@@ -2069,6 +2251,8 @@ export function DashboardShell({
               </article>
             </section>
           ) : null}
+
+          {activeView === "bracket" ? bracketWorkspace : null}
 
         </>
       )}

@@ -49,6 +49,9 @@ alter table public.auction_sessions
   add column if not exists archived_by_email text null;
 
 alter table public.auction_sessions
+  add column if not exists bracket_state jsonb not null default '{}'::jsonb;
+
+alter table public.auction_sessions
   add column if not exists bracket_import jsonb null;
 
 alter table public.auction_sessions
@@ -293,6 +296,53 @@ begin
     p_price,
     p_created_at
   );
+
+  update public.auction_sessions
+  set live_state = p_live_state,
+      updated_at = p_updated_at
+  where id = p_session_id;
+
+  update public.syndicates as target
+  set spend = source.spend,
+      remaining_bankroll = source.remaining_bankroll,
+      owned_team_ids = source.owned_team_ids,
+      portfolio_expected_value = source.portfolio_expected_value
+  from jsonb_to_recordset(p_syndicates) as source(
+    id text,
+    spend numeric,
+    remaining_bankroll numeric,
+    owned_team_ids jsonb,
+    portfolio_expected_value numeric
+  )
+  where target.session_id = p_session_id
+    and target.id = source.id;
+end;
+$$;
+
+create or replace function public.undo_purchase_transaction(
+  p_session_id text,
+  p_purchase_id text,
+  p_live_state jsonb,
+  p_updated_at timestamptz,
+  p_syndicates jsonb
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  if not exists (
+    select 1
+    from public.purchase_records
+    where session_id = p_session_id
+      and id = p_purchase_id
+  ) then
+    raise exception 'Purchase not found.';
+  end if;
+
+  delete from public.purchase_records
+  where session_id = p_session_id
+    and id = p_purchase_id;
 
   update public.auction_sessions
   set live_state = p_live_state,

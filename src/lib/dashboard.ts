@@ -1,5 +1,6 @@
 import { getConfiguredMothershipSyndicateName } from "@/lib/config";
 import { buildAuctionAssets } from "@/lib/auction-assets";
+import { buildBracketView, normalizeBracketState } from "@/lib/bracket";
 import { buildBidRecommendation } from "@/lib/engine/recommendations";
 import { buildSessionAnalysisSnapshot } from "@/lib/session-analysis";
 import { AuctionDashboard, AuctionSession, StorageBackend, StoredAuctionSession } from "@/lib/types";
@@ -38,6 +39,7 @@ function sanitizeSessionForClient(session: AuctionSession | StoredAuctionSession
     archivedByName: session.archivedByName,
     archivedByEmail: null,
     focusSyndicateId: mothership.id,
+    bracketState: normalizeBracketState(session.bracketState),
     eventAccess: session.eventAccess,
     payoutRules: session.payoutRules,
     analysisSettings: session.analysisSettings,
@@ -146,6 +148,7 @@ export function buildDashboard(session: AuctionSession | StoredAuctionSession, s
     soldTeams,
     ledger: publicSession.syndicates,
     analysis,
+    bracket: buildBracketView(publicSession),
     recommendation: buildBidRecommendation(
       publicSession,
       nominatedTeam,
