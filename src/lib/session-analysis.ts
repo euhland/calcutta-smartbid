@@ -46,8 +46,7 @@ export function buildSessionAnalysisSnapshot(
       const expectedGrossPayout = simulationResult?.expectedGrossPayout ?? 0;
       const confidenceFloor = simulationResult?.confidenceBand[0] ?? 0;
       const confidenceCeiling = simulationResult?.confidenceBand[1] ?? 0;
-      const relativeConviction =
-        fallbackShare > 0 ? share / fallbackShare : 1;
+      const relativeConviction = fallbackShare > 0 ? share / fallbackShare : 1;
       const convictionTilt = clamp(0.78 + relativeConviction * 0.22, 0.72, 1.28);
 
       const legacyTargetBid = investableCash * share;
