@@ -181,9 +181,7 @@ describe("session-managed imports", () => {
     const analysis = parseSessionAnalysisImport(analysisCsv, "Analysis");
     const merged = mergeBracketAndAnalysisImports(bracket, analysis);
 
-    expect(merged.issues).toEqual([
-      "Bracket import contains 16 teams. The live room currently requires a resolved 64-team field."
-    ]);
+    expect(merged.issues).toEqual([]);
     expect(merged.projections.find((team) => team.name === "Michigan State")?.rating).toBe(0.95);
     expect(merged.projections.find((team) => team.name === "Ole Miss")?.rating).toBe(0.91);
     expect(merged.projections.find((team) => team.name === "UConn")?.rating).toBe(0.94);

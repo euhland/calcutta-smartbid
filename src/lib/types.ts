@@ -26,6 +26,8 @@ export type TeamClassificationValue =
   | "love-at-right-price"
   | "caution"
   | "nuclear-disaster";
+export type AuctionAssetType = "single_team" | "play_in_slot" | "seed_bundle";
+export type AuctionAssetMemberType = "team" | "play_in_slot";
 
 export interface PayoutRules {
   roundOf64: number;
@@ -144,6 +146,31 @@ export interface SessionImportReadiness {
   mergedProjectionCount: number;
   lastBracketImportAt: string | null;
   lastAnalysisImportAt: string | null;
+}
+
+export interface AuctionAssetMember {
+  id: string;
+  type: AuctionAssetMemberType;
+  label: string;
+  region: string;
+  seed: number;
+  regionSlot: string | null;
+  teamIds: string[];
+  projectionIds: string[];
+  unresolved: boolean;
+}
+
+export interface AuctionAsset {
+  id: string;
+  label: string;
+  type: AuctionAssetType;
+  region: string;
+  seed: number | null;
+  seedRange: [number, number] | null;
+  memberTeamIds: string[];
+  projectionIds: string[];
+  members: AuctionAssetMember[];
+  unresolved: boolean;
 }
 
 export interface TeamQuadWins {
@@ -307,7 +334,9 @@ export interface SimulationSnapshot {
 }
 
 export interface TeamMarketState {
+  nominatedAssetId?: string | null;
   nominatedTeamId: string | null;
+  soldAssetIds?: string[];
   currentBid: number;
   soldTeamIds: string[];
   lastUpdatedAt: string;
@@ -317,6 +346,9 @@ export interface PurchaseRecord {
   id: string;
   sessionId: string;
   teamId: string;
+  assetId?: string;
+  assetLabel?: string;
+  projectionIds?: string[];
   buyerSyndicateId: string;
   price: number;
   createdAt: string;
@@ -431,6 +463,7 @@ export interface AuctionSession {
   bracketImport: SessionBracketImport | null;
   analysisImport: SessionAnalysisImport | null;
   importReadiness: SessionImportReadiness;
+  auctionAssets?: AuctionAsset[];
   liveState: TeamMarketState;
   purchases: PurchaseRecord[];
   simulationSnapshot: SimulationSnapshot | null;
@@ -452,6 +485,7 @@ export interface RecommendationDriver {
 
 export interface BidRecommendation {
   teamId: string;
+  assetId?: string;
   currentBid: number;
   openingBid: number;
   targetBid: number;
@@ -477,10 +511,19 @@ export interface SoldTeamSummary {
   buyerSyndicateId: string;
 }
 
+export interface SoldAssetSummary {
+  asset: AuctionAsset;
+  price: number;
+  buyerSyndicateId: string;
+}
+
 export interface AuctionDashboard {
   session: AuctionSession;
   focusSyndicate: Syndicate;
+  nominatedAsset: AuctionAsset | null;
   nominatedTeam: TeamProjection | null;
+  availableAssets: AuctionAsset[];
+  soldAssets: SoldAssetSummary[];
   availableTeams: TeamProjection[];
   soldTeams: SoldTeamSummary[];
   ledger: Syndicate[];
@@ -688,11 +731,13 @@ export const rebuildSimulationSchema = z.object({
 });
 
 export const updateLiveStateSchema = z.object({
+  nominatedAssetId: z.string().nullable().optional(),
   nominatedTeamId: z.string().nullable().optional(),
   currentBid: z.number().nonnegative().optional()
 });
 
 export const createPurchaseSchema = z.object({
+  assetId: z.string().optional(),
   teamId: z.string().optional(),
   buyerSyndicateId: z.string(),
   price: z.number().positive()

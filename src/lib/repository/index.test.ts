@@ -272,6 +272,114 @@ describe("repository funding model", () => {
     expect(afterAnalysis.session.activeDataSource.name).toBe("Session-managed imports");
   });
 
+  it("allows nominating a 13-16 bundle asset after session-managed imports", async () => {
+    const { repository, session } = await createBaselineSession();
+    const regions = ["East", "West", "South", "Midwest"];
+    const bracketCsv = [
+      "id,name,shortName,region,seed,regionSlot",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            region,
+            String(seed),
+            `${region}-${seed}`
+          ].join(",");
+        })
+      )
+    ].join("\n");
+    const analysisCsv = [
+      "teamId,name,shortName,rating,offense,defense,tempo",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            String(100 - seed * 0.3),
+            String(121 - seed * 0.25),
+            String(92 + seed * 0.2),
+            String(67 + (seed % 4))
+          ].join(",");
+        })
+      )
+    ].join("\n");
+
+    await repository.importSessionBracket(session.id, {
+      csvContent: bracketCsv,
+      sourceName: "Official Bracket"
+    });
+    await repository.importSessionAnalysis(session.id, {
+      csvContent: analysisCsv,
+      sourceName: "Metrics Feed"
+    });
+
+    const dashboard = await repository.updateLiveState(session.id, {
+      nominatedAssetId: "bundle:east:13-16"
+    });
+
+    expect(dashboard.session.liveState.nominatedAssetId).toBe("bundle:east:13-16");
+    expect(dashboard.session.liveState.nominatedTeamId).toBe("east-13");
+  });
+
+  it("treats a nominatedTeamId that matches an asset id as a bundle nomination", async () => {
+    const { repository, session } = await createBaselineSession();
+    const regions = ["East", "West", "South", "Midwest"];
+    const bracketCsv = [
+      "id,name,shortName,region,seed,regionSlot",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            region,
+            String(seed),
+            `${region}-${seed}`
+          ].join(",");
+        })
+      )
+    ].join("\n");
+    const analysisCsv = [
+      "teamId,name,shortName,rating,offense,defense,tempo",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            String(100 - seed * 0.3),
+            String(121 - seed * 0.25),
+            String(92 + seed * 0.2),
+            String(67 + (seed % 4))
+          ].join(",");
+        })
+      )
+    ].join("\n");
+
+    await repository.importSessionBracket(session.id, {
+      csvContent: bracketCsv,
+      sourceName: "Official Bracket"
+    });
+    await repository.importSessionAnalysis(session.id, {
+      csvContent: analysisCsv,
+      sourceName: "Metrics Feed"
+    });
+
+    const dashboard = await repository.updateLiveState(session.id, {
+      nominatedTeamId: "bundle:east:13-16"
+    });
+
+    expect(dashboard.session.liveState.nominatedAssetId).toBe("bundle:east:13-16");
+    expect(dashboard.session.liveState.nominatedTeamId).toBe("east-13");
+  });
+
   it("clears stale projections when a replacement session-managed import no longer merges cleanly", async () => {
     const { repository, session } = await createBaselineSession();
     const regions = ["East", "West", "South", "Midwest"];

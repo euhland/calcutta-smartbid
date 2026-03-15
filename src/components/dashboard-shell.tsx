@@ -19,12 +19,13 @@ import {
   parseBidInputValue
 } from "@/lib/bid-input";
 import {
+  AuctionAsset,
   AuctionDashboard,
   AuthenticatedMember,
   BidRecommendation,
   MatchupConflict,
   ProjectionOverride,
-  SoldTeamSummary,
+  SoldAssetSummary,
   Stage,
   Syndicate,
   TeamClassificationValue,
@@ -91,8 +92,11 @@ export function DashboardShell({
     initialDashboard
   );
   const [activeView, setActiveView] = useState<WorkspaceView>(initialView);
+  const [selectedAssetId, setSelectedAssetId] = useState(
+    dashboard.session.liveState.nominatedAssetId ?? dashboard.nominatedAsset?.id ?? ""
+  );
   const [selectedTeamId, setSelectedTeamId] = useState(
-    dashboard.session.liveState.nominatedTeamId ?? ""
+    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
   );
   const [currentBid, setCurrentBid] = useState(dashboard.session.liveState.currentBid);
   const [bidInputValue, setBidInputValue] = useState(
@@ -113,7 +117,10 @@ export function DashboardShell({
   const [error, setError] = useState<string | null>(null);
   const [analysisSearch, setAnalysisSearch] = useState("");
   const [analysisTeamId, setAnalysisTeamId] = useState(
-    dashboard.session.liveState.nominatedTeamId ?? ""
+    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
+  );
+  const [overrideTeamId, setOverrideTeamId] = useState(
+    dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? ""
   );
   const teamSelectRef = useRef<HTMLInputElement | null>(null);
   const bidInputRef = useRef<HTMLInputElement | null>(null);
@@ -132,6 +139,7 @@ export function DashboardShell({
     const liveBid = dashboard.session.liveState.currentBid;
     if (pendingCommittedBidRef.current !== null) {
       if (liveBid !== pendingCommittedBidRef.current) {
+        setSelectedAssetId(dashboard.session.liveState.nominatedAssetId ?? "");
         setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
         return;
       }
@@ -139,6 +147,7 @@ export function DashboardShell({
       pendingCommittedBidRef.current = null;
     }
 
+    setSelectedAssetId(dashboard.session.liveState.nominatedAssetId ?? "");
     setSelectedTeamId(dashboard.session.liveState.nominatedTeamId ?? "");
     setCurrentBid(liveBid);
     setBidInputValue(formatBidInputValue(liveBid));
@@ -151,6 +160,8 @@ export function DashboardShell({
   }, [buyerId, dashboard.focusSyndicate.id, dashboard.ledger]);
 
   const snapshot = dashboard.session.simulationSnapshot;
+  const selectedAsset =
+    dashboard.session.auctionAssets?.find((asset) => asset.id === selectedAssetId) ?? null;
   const selectedTeam =
     dashboard.session.projections.find((team) => team.id === selectedTeamId) ?? null;
   const liveSession = useMemo(
@@ -158,12 +169,14 @@ export function DashboardShell({
       ...dashboard.session,
       liveState: {
         ...dashboard.session.liveState,
+        nominatedAssetId: selectedAssetId || null,
         nominatedTeamId: selectedTeamId || null,
         currentBid
       }
     }),
-    [currentBid, dashboard.session, selectedTeamId]
+    [currentBid, dashboard.session, selectedAssetId, selectedTeamId]
   );
+  const nominatedAsset = selectedAsset;
   const nominatedTeam = selectedTeam;
   const recommendation = useMemo(
     () =>
@@ -171,16 +184,15 @@ export function DashboardShell({
         liveSession,
         selectedTeam,
         dashboard.focusSyndicate,
-        dashboard.analysis
+        dashboard.analysis,
+        selectedAsset
       ),
-    [dashboard.analysis, dashboard.focusSyndicate, liveSession, selectedTeam]
+    [dashboard.analysis, dashboard.focusSyndicate, liveSession, selectedAsset, selectedTeam]
   );
+  const overrideSelectedTeam =
+    dashboard.session.projections.find((team) => team.id === overrideTeamId) ?? null;
   const selectedOverride =
-    (selectedTeamId && dashboard.session.projectionOverrides[selectedTeamId]) || null;
-  const soldLookup = useMemo(
-    () => new Set(dashboard.soldTeams.map((item) => item.team.id)),
-    [dashboard.soldTeams]
-  );
+    (overrideTeamId && dashboard.session.projectionOverrides[overrideTeamId]) || null;
   const teamLookup = useMemo(
     () => new Map(dashboard.session.projections.map((team) => [team.id, team])),
     [dashboard.session.projections]
@@ -203,10 +215,39 @@ export function DashboardShell({
   }, [dashboard.focusSyndicate.id, dashboard.ledger]);
   const analysisDetailTeam =
     dashboard.session.projections.find((t) => t.id === analysisTeamId) ?? null;
+  const analysisAssetLookup = useMemo(() => {
+    const lookup = new Map<string, AuctionAsset>();
+    for (const asset of dashboard.session.auctionAssets ?? []) {
+      for (const projectionId of asset.projectionIds) {
+        lookup.set(projectionId, asset);
+      }
+    }
+    return lookup;
+  }, [dashboard.session.auctionAssets]);
+  const analysisDetailAsset =
+    (analysisTeamId && analysisAssetLookup.get(analysisTeamId)) ?? null;
   const analysisRow =
     dashboard.analysis.ranking.find((row) => row.teamId === analysisTeamId) ?? null;
   const analysisBudgetRow =
     dashboard.analysis.budgetRows.find((row) => row.teamId === analysisTeamId) ?? null;
+  const analysisAssetBudget = useMemo(() => {
+    if (!analysisDetailAsset) {
+      return null;
+    }
+
+    const matchingRows = dashboard.analysis.budgetRows.filter((row) =>
+      analysisDetailAsset.projectionIds.includes(row.teamId)
+    );
+    if (!matchingRows.length) {
+      return null;
+    }
+
+    return {
+      openingBid: matchingRows.reduce((total, row) => total + row.openingBid, 0),
+      targetBid: matchingRows.reduce((total, row) => total + row.targetBid, 0),
+      maxBid: matchingRows.reduce((total, row) => total + row.maxBid, 0)
+    };
+  }, [analysisDetailAsset, dashboard.analysis.budgetRows]);
   const analysisTeamClassification = analysisRow?.classification ?? null;
   const analysisTeamNote = analysisRow?.note ?? null;
   const trimmedTeamNoteInput = teamNoteInput.trim();
@@ -218,13 +259,28 @@ export function DashboardShell({
       ),
     [dashboard.focusSyndicate.id, dashboard.soldTeams]
   );
+  const focusOwnedAssets = useMemo(
+    () =>
+      dashboard.soldAssets.filter(
+        (item) => item.buyerSyndicateId === dashboard.focusSyndicate.id
+      ),
+    [dashboard.focusSyndicate.id, dashboard.soldAssets]
+  );
   const recentSales = useMemo(
-    () => [...dashboard.soldTeams].slice(-4).reverse(),
-    [dashboard.soldTeams]
+    () => [...dashboard.soldAssets].slice(-4).reverse(),
+    [dashboard.soldAssets]
   );
   const ownedTeamLookup = useMemo(
     () => new Map(dashboard.analysis.ownedTeams.map((team) => [team.teamId, team])),
     [dashboard.analysis.ownedTeams]
+  );
+  const soldAssetCountBySyndicate = useMemo(
+    () =>
+      dashboard.soldAssets.reduce<Record<string, number>>((counts, sale) => {
+        counts[sale.buyerSyndicateId] = (counts[sale.buyerSyndicateId] ?? 0) + 1;
+        return counts;
+      }, {}),
+    [dashboard.soldAssets]
   );
   const filteredAnalysisRows = useMemo(() => {
     const normalized = analysisSearch.trim().toLowerCase();
@@ -234,10 +290,11 @@ export function DashboardShell({
 
     return dashboard.analysis.budgetRows.filter((row) => {
       const analysisItem = dashboard.analysis.ranking.find((candidate) => candidate.teamId === row.teamId);
-      const haystack = `${row.teamName} ${analysisItem?.shortName ?? ""}`.toLowerCase();
+      const auctionTeam = analysisAssetLookup.get(row.teamId);
+      const haystack = `${row.teamName} ${analysisItem?.shortName ?? ""} ${auctionTeam?.label ?? ""}`.toLowerCase();
       return haystack.includes(normalized);
     });
-  }, [analysisSearch, dashboard.analysis.budgetRows, dashboard.analysis.ranking]);
+  }, [analysisAssetLookup, analysisSearch, dashboard.analysis.budgetRows, dashboard.analysis.ranking]);
   const filteredRationale = useMemo(
     () =>
       recommendation?.rationale.filter(
@@ -286,7 +343,11 @@ export function DashboardShell({
     : null;
 
   useEffect(() => {
-    if (!selectedTeam) {
+    setOverrideTeamId(dashboard.session.liveState.nominatedTeamId ?? dashboard.nominatedTeam?.id ?? "");
+  }, [dashboard.nominatedTeam?.id, dashboard.session.liveState.nominatedTeamId]);
+
+  useEffect(() => {
+    if (!overrideSelectedTeam) {
       setOverrideForm({
         rating: "",
         offense: "",
@@ -297,19 +358,19 @@ export function DashboardShell({
     }
 
     setOverrideForm({
-      rating: selectedOverride?.rating?.toString() ?? selectedTeam.rating.toString(),
-      offense: selectedOverride?.offense?.toString() ?? selectedTeam.offense.toString(),
-      defense: selectedOverride?.defense?.toString() ?? selectedTeam.defense.toString(),
-      tempo: selectedOverride?.tempo?.toString() ?? selectedTeam.tempo.toString()
+      rating: selectedOverride?.rating?.toString() ?? overrideSelectedTeam.rating.toString(),
+      offense: selectedOverride?.offense?.toString() ?? overrideSelectedTeam.offense.toString(),
+      defense: selectedOverride?.defense?.toString() ?? overrideSelectedTeam.defense.toString(),
+      tempo: selectedOverride?.tempo?.toString() ?? overrideSelectedTeam.tempo.toString()
     });
-  }, [selectedOverride, selectedTeam]);
+  }, [overrideSelectedTeam, selectedOverride]);
 
   useEffect(() => {
     setTeamNoteInput(analysisTeamNote ?? "");
   }, [analysisTeamId, analysisTeamNote]);
 
-  const saveActiveTeam = useCallback(async (nextTeamId: string) => {
-    pendingActiveTeamIdRef.current = nextTeamId;
+  const saveActiveAsset = useCallback(async (nextAssetId: string) => {
+    pendingActiveTeamIdRef.current = nextAssetId;
 
     if (activeTeamSaveInFlightRef.current) {
       return;
@@ -318,7 +379,7 @@ export function DashboardShell({
     activeTeamSaveInFlightRef.current = true;
 
     while (pendingActiveTeamIdRef.current !== null) {
-      const teamIdToPersist = pendingActiveTeamIdRef.current;
+      const assetIdToPersist = pendingActiveTeamIdRef.current;
       pendingActiveTeamIdRef.current = null;
 
       setError(null);
@@ -330,7 +391,7 @@ export function DashboardShell({
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          nominatedTeamId: teamIdToPersist || null
+          nominatedAssetId: assetIdToPersist || null
         })
       });
 
@@ -369,7 +430,7 @@ export function DashboardShell({
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          nominatedTeamId: selectedTeamId || null,
+          nominatedAssetId: selectedAssetId || null,
           currentBid: nextBid
         })
       });
@@ -392,7 +453,7 @@ export function DashboardShell({
     } finally {
       setIsSavingLiveState(false);
     }
-  }, [bidInputValue, broadcastRefresh, refresh, selectedTeamId, sessionId]);
+  }, [bidInputValue, broadcastRefresh, refresh, selectedAssetId, sessionId]);
 
   const handleShortcut = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) {
@@ -461,7 +522,7 @@ export function DashboardShell({
       return;
     }
 
-    if (!selectedTeamId) {
+    if (!selectedAssetId) {
       setError("Choose a nominated team before recording a purchase.");
       return;
     }
@@ -472,7 +533,7 @@ export function DashboardShell({
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        teamId: selectedTeamId || undefined,
+        assetId: selectedAssetId || undefined,
         buyerSyndicateId: buyerId,
         price: currentBid
       })
@@ -489,10 +550,10 @@ export function DashboardShell({
     startTransition(() => {
       void refresh();
     });
-  }, [broadcastRefresh, buyerId, currentBid, refresh, selectedTeamId, sessionId]);
+  }, [broadcastRefresh, buyerId, currentBid, refresh, selectedAssetId, sessionId]);
 
   async function saveProjectionOverride() {
-    if (!selectedTeamId) {
+    if (!overrideTeamId) {
       setError("Choose a team before saving an override.");
       return;
     }
@@ -500,7 +561,7 @@ export function DashboardShell({
     setError(null);
     setNotice(null);
     const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${selectedTeamId}/override`,
+      `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
       {
         method: "PUT",
         headers: {
@@ -528,7 +589,7 @@ export function DashboardShell({
   }
 
   async function clearProjectionOverride() {
-    if (!selectedTeamId) {
+    if (!overrideTeamId) {
       setError("Choose a team before clearing an override.");
       return;
     }
@@ -536,7 +597,7 @@ export function DashboardShell({
     setError(null);
     setNotice(null);
     const response = await fetch(
-      `/api/sessions/${sessionId}/projections/${selectedTeamId}/override`,
+      `/api/sessions/${sessionId}/projections/${overrideTeamId}/override`,
       {
         method: "DELETE"
       }
@@ -767,12 +828,17 @@ export function DashboardShell({
                     <div className="decision-panel__header">
                       <div>
                         <p className="eyebrow">Live Decision Board</p>
-                        <h2>{nominatedTeam ? nominatedTeam.name : "Waiting for nomination"}</h2>
+                        <h2>{nominatedAsset ? nominatedAsset.label : "Waiting for nomination"}</h2>
                         <p className="decision-panel__subcopy">
-                          {nominatedTeam
-                            ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
+                          {nominatedAsset
+                            ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
                             : "Set an active team to unlock bid guidance."}
                         </p>
+                        {nominatedAsset && nominatedAsset.type !== "single_team" ? (
+                          <p className="decision-panel__note">
+                            {formatAssetMembersCompact(nominatedAsset)}
+                          </p>
+                        ) : null}
                         {nominatedTeamClassification || nominatedTeamNote ? (
                           <div className="decision-panel__annotation">
                             {nominatedTeamClassification ? (
@@ -1136,19 +1202,29 @@ export function DashboardShell({
                   <div className="field-stack">
                     <label className="field-shell field-shell--accent">
                       <span>Active team</span>
-                      <TeamCombobox
-                        teams={dashboard.session.projections}
-                        soldLookup={soldLookup}
-                        value={selectedTeamId}
+                      <AssetCombobox
+                        assets={dashboard.availableAssets}
+                        soldAssets={dashboard.soldAssets}
+                        value={selectedAssetId}
                         inputRef={teamSelectRef}
-                        onChange={(nextTeamId) => {
+                        onChange={(nextAssetId) => {
+                          const nextAsset =
+                            dashboard.session.auctionAssets?.find(
+                              (asset) => asset.id === nextAssetId
+                            ) ?? null;
                           const nextBid = 0;
-                          setSelectedTeamId(nextTeamId);
+                          setSelectedAssetId(nextAssetId);
+                          setSelectedTeamId(nextAsset?.projectionIds[0] ?? "");
                           setCurrentBid(nextBid);
                           setBidInputValue(formatBidInputValue(nextBid));
-                          void saveActiveTeam(nextTeamId);
+                          void saveActiveAsset(nextAssetId);
                         }}
                       />
+                      {selectedAsset && selectedAsset.type !== "single_team" ? (
+                        <span className="decision-panel__note">
+                          {formatAssetMembersCompact(selectedAsset)}
+                        </span>
+                      ) : null}
                     </label>
 
                     <label className="field-shell">
@@ -1215,7 +1291,7 @@ export function DashboardShell({
                     <button
                       type="button"
                       className="button button-accent"
-                      disabled={currentBid <= 0 || !selectedTeamId}
+                      disabled={currentBid <= 0 || !selectedAssetId}
                       onClick={() => void recordPurchase()}
                     >
                       Record purchase
@@ -1271,8 +1347,8 @@ export function DashboardShell({
                   {recentSales.length ? (
                     <div className="list-stack">
                       {recentSales.map((sale) => (
-                        <SaleRow
-                          key={`${sale.team.id}-${sale.price}`}
+                        <AssetSaleRow
+                          key={`${sale.asset.id}-${sale.price}`}
                           sale={sale}
                           syndicateLookup={syndicateLookup}
                         />
@@ -1311,7 +1387,7 @@ export function DashboardShell({
                       type="search"
                       value={analysisSearch}
                       onChange={(event) => setAnalysisSearch(event.target.value)}
-                      placeholder="Type team or abbreviation"
+                      placeholder="Type team, package, or abbreviation"
                     />
                   </label>
                 </div>
@@ -1349,6 +1425,7 @@ export function DashboardShell({
                       <tr>
                         <th>Rank</th>
                         <th>Team</th>
+                        <th>Auction team</th>
                         <th>Signal</th>
                         <th>Score</th>
                         <th>Target</th>
@@ -1366,6 +1443,23 @@ export function DashboardShell({
                           <td>#{row.rank}</td>
                           <td>
                             <strong>{row.teamName}</strong>
+                          </td>
+                          <td>
+                            {(() => {
+                              const auctionTeam = analysisAssetLookup.get(row.teamId);
+                              if (!auctionTeam || auctionTeam.type === "single_team") {
+                                return <span className="team-classification-empty">Single team</span>;
+                              }
+
+                              return (
+                                <>
+                                  <strong>{auctionTeam.label}</strong>
+                                  <div className="decision-panel__note">
+                                    {formatAssetMembersCompact(auctionTeam)}
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </td>
                           <td>
                             {row.classification ? (
@@ -1402,6 +1496,27 @@ export function DashboardShell({
 
                 {analysisDetailTeam && analysisRow ? (
                   <div className="stack-layout">
+                    {analysisDetailAsset && analysisDetailAsset.type !== "single_team" ? (
+                      <article className="surface-card">
+                        <div className="section-headline">
+                          <div>
+                            <p className="eyebrow">Auction Team</p>
+                            <h3>{analysisDetailAsset.label}</h3>
+                          </div>
+                          {analysisAssetBudget ? (
+                            <span className="status-pill">
+                              {formatCurrency(analysisAssetBudget.targetBid)} / {formatCurrency(analysisAssetBudget.maxBid)}
+                            </span>
+                          ) : (
+                            <span className="status-pill status-pill--muted">Sold / unavailable</span>
+                          )}
+                        </div>
+                        <p className="decision-panel__note">
+                          {formatAssetMembersCompact(analysisDetailAsset)}
+                        </p>
+                      </article>
+                    ) : null}
+
                     <article className="surface-card">
                       <div className="section-headline">
                         <div>
@@ -1652,7 +1767,11 @@ export function DashboardShell({
                   </div>
                 </div>
                 <div className="metric-grid">
-                  <MetricCard label="Owned teams" value={`${focusOwnedTeams.length}`} />
+                  <MetricCard label="Purchased teams" value={`${focusOwnedAssets.length}`} />
+                  <MetricCard
+                    label="Underlying teams"
+                    value={`${focusOwnedTeams.length}`}
+                  />
                   <MetricCard
                     label="Total spend"
                     value={formatCurrency(dashboard.focusSyndicate.spend)}
@@ -1677,22 +1796,27 @@ export function DashboardShell({
                   <div className="section-headline">
                     <div>
                       <p className="eyebrow">Owned Teams</p>
-                      <h3>Readable position cards</h3>
+                      <h3>Auction positions with member detail</h3>
                     </div>
                   </div>
-                  {focusOwnedTeams.length ? (
+                  {focusOwnedAssets.length ? (
                     <div className="portfolio-card-grid">
-                      {focusOwnedTeams.map((item) => {
-                        const modeledValue =
-                          snapshot?.teamResults[item.team.id]?.expectedGrossPayout ?? 0;
+                      {focusOwnedAssets.map((item) => {
+                        const representativeTeam =
+                          teamLookup.get(item.asset.projectionIds[0]) ?? null;
+                        const modeledValue = item.asset.projectionIds.reduce(
+                          (total, projectionId) =>
+                            total +
+                            (snapshot?.teamResults[projectionId]?.expectedGrossPayout ?? 0),
+                          0
+                        );
                         const valueDelta = modeledValue - item.price;
                         return (
-                          <article key={item.team.id} className="portfolio-card">
+                          <article key={item.asset.id} className="portfolio-card">
                             <div>
-                              <h4>{item.team.name}</h4>
-                              <p>
-                                {item.team.seed}-seed, {item.team.region}
-                              </p>
+                              <h4>{item.asset.label}</h4>
+                              <p>{formatAssetSubtitle(item.asset, representativeTeam)}</p>
+                              <p>{formatAssetMembers(item.asset)}</p>
                             </div>
                             <div className="portfolio-card__metrics">
                               <MetricCard
@@ -1739,7 +1863,10 @@ export function DashboardShell({
                           />
                           <div>
                             <strong>{syndicate.name}</strong>
-                            <span>{syndicate.ownedTeamIds.length} teams owned</span>
+                            <span>
+                              {soldAssetCountBySyndicate[syndicate.id] ?? 0} teams ·{" "}
+                              {syndicate.ownedTeamIds.length} teams
+                            </span>
                           </div>
                         </div>
                         <div>
@@ -1802,8 +1929,8 @@ export function DashboardShell({
                   <label className="field-shell">
                     <span>Team</span>
                     <select
-                      value={selectedTeamId}
-                      onChange={(event) => setSelectedTeamId(event.target.value)}
+                      value={overrideTeamId}
+                      onChange={(event) => setOverrideTeamId(event.target.value)}
                     >
                       <option value="">Select a team</option>
                       {dashboard.session.projections.map((team) => (
@@ -1813,12 +1940,12 @@ export function DashboardShell({
                       ))}
                     </select>
                   </label>
-                  {selectedTeam ? (
+                  {overrideSelectedTeam ? (
                     <>
                       <div className="override-summary">
-                        <strong>{selectedTeam.name}</strong>
+                        <strong>{overrideSelectedTeam.name}</strong>
                         <span>
-                          Source {selectedTeam.source}
+                          Source {overrideSelectedTeam.source}
                           {selectedOverride ? " with override applied" : ""}
                         </span>
                       </div>
@@ -1888,7 +2015,7 @@ export function DashboardShell({
                   )}
                 </div>
 
-                {selectedTeam ? (
+                {overrideSelectedTeam ? (
                   <div className="button-row">
                     <button
                       type="button"
@@ -1956,22 +2083,25 @@ function ViewerBoard({
   dashboard: AuctionDashboard;
   recommendation: BidRecommendation | null;
 }) {
+  const nominatedAsset = dashboard.nominatedAsset;
   const nominatedTeam = dashboard.nominatedTeam;
   const nominatedTeamNote =
     (nominatedTeam && dashboard.session.teamNotes[nominatedTeam.id]?.note) || null;
   const [ownershipSearch, setOwnershipSearch] = useState("");
-  const soldFeed = useMemo(() => [...dashboard.soldTeams].reverse(), [dashboard.soldTeams]);
+  const soldFeed = useMemo(() => [...dashboard.soldAssets].reverse(), [dashboard.soldAssets]);
   const ownershipGroups = useMemo(() => {
     const normalized = ownershipSearch.trim().toLowerCase();
     const hasActiveSearch = normalized.length > 0;
-    const matchesSearch = (sale: SoldTeamSummary) =>
-      !normalized || sale.team.name.toLowerCase().includes(normalized);
+    const matchesSearch = (sale: SoldAssetSummary) =>
+      !normalized ||
+      sale.asset.label.toLowerCase().includes(normalized) ||
+      sale.asset.members.some((member) => member.label.toLowerCase().includes(normalized));
 
     return [
       ...[
         {
           syndicate: dashboard.focusSyndicate,
-          sales: dashboard.soldTeams.filter(
+          sales: dashboard.soldAssets.filter(
             (sale) =>
               sale.buyerSyndicateId === dashboard.focusSyndicate.id && matchesSearch(sale)
           ),
@@ -1982,14 +2112,14 @@ function ViewerBoard({
         .filter((syndicate) => syndicate.id !== dashboard.focusSyndicate.id)
         .map((syndicate) => ({
           syndicate,
-          sales: dashboard.soldTeams.filter(
+          sales: dashboard.soldAssets.filter(
             (sale) => sale.buyerSyndicateId === syndicate.id && matchesSearch(sale)
           ),
           highlight: false
         }))
         .filter((group) => group.sales.length > 0 || !hasActiveSearch)
       ];
-  }, [dashboard.focusSyndicate, dashboard.ledger, dashboard.soldTeams, ownershipSearch]);
+  }, [dashboard.focusSyndicate, dashboard.ledger, dashboard.soldAssets, ownershipSearch]);
   return (
     <section className="viewer-layout">
       <div className="viewer-layout__main">
@@ -1998,18 +2128,21 @@ function ViewerBoard({
           <div className="viewer-bid-hero viewer-bid-hero--team">
             <div className="viewer-bid-hero__pulse">
               <span className="pulse-dot" />
-              <span>{nominatedTeam ? "Active team" : "Awaiting nomination"}</span>
+              <span>{nominatedAsset ? "Active team" : "Awaiting nomination"}</span>
             </div>
             <strong
-              className={cn(!nominatedTeam && "viewer-bid-hero__title--waiting")}
+              className={cn(!nominatedAsset && "viewer-bid-hero__title--waiting")}
             >
-              {nominatedTeam ? nominatedTeam.name : "Waiting for next team"}
+              {nominatedAsset ? nominatedAsset.label : "Waiting for next team"}
             </strong>
             <p className="viewer-board__subcopy">
-              {nominatedTeam
-                ? `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`
+              {nominatedAsset
+                ? formatAssetSubtitle(nominatedAsset, nominatedTeam)
                 : "The next active team will take over this board as soon as the operator makes a nomination."}
             </p>
+            {nominatedAsset ? (
+              <p className="viewer-note">{formatAssetMembers(nominatedAsset)}</p>
+            ) : null}
             {nominatedTeam &&
             dashboard.session.teamClassifications[nominatedTeam.id]?.classification ? (
               <div className="viewer-bid-hero__classification">
@@ -2058,7 +2191,8 @@ function ViewerBoard({
                   : formatCurrency(dashboard.analysis.funding.impliedSharePrice)
               }
             />
-            <MetricCard label="Teams remaining" value={`${dashboard.availableTeams.length}`} />
+            <MetricCard label="Teams remaining to sell" value={`${dashboard.availableAssets.length}`} />
+            <MetricCard label="Underlying teams remaining" value={`${dashboard.availableTeams.length}`} />
             <MetricCard
               label="Mothership total spent"
               value={formatCurrency(dashboard.focusSyndicate.spend)}
@@ -2127,8 +2261,8 @@ function ViewerBoard({
           {soldFeed.length ? (
             <div className="list-stack">
               {soldFeed.map((sale) => (
-                <ViewerSoldTeamRow
-                  key={`${sale.team.id}-${sale.price}-${sale.buyerSyndicateId}`}
+                <ViewerSoldAssetRow
+                  key={`${sale.asset.id}-${sale.price}-${sale.buyerSyndicateId}`}
                   sale={sale}
                   buyerName={
                     dashboard.ledger.find((syndicate) => syndicate.id === sale.buyerSyndicateId)
@@ -2146,17 +2280,18 @@ function ViewerBoard({
   );
 }
 
-function ViewerSoldTeamRow({
+function ViewerSoldAssetRow({
   sale,
   buyerName
 }: {
-  sale: SoldTeamSummary;
+  sale: SoldAssetSummary;
   buyerName: string;
 }) {
   return (
     <div className="list-row">
       <div>
-        <strong>{sale.team.name}</strong>
+        <strong>{sale.asset.label}</strong>
+        <span>{formatAssetMembers(sale.asset)}</span>
         <span>To {buyerName}</span>
       </div>
       <strong>{formatCurrency(sale.price)}</strong>
@@ -2231,11 +2366,11 @@ function ConflictRow({
   );
 }
 
-function SaleRow({
+function AssetSaleRow({
   sale,
   syndicateLookup
 }: {
-  sale: SoldTeamSummary;
+  sale: SoldAssetSummary;
   syndicateLookup: Map<string, Syndicate>;
 }) {
   const buyer = syndicateLookup.get(sale.buyerSyndicateId);
@@ -2243,7 +2378,7 @@ function SaleRow({
   return (
     <div className="list-row">
       <div>
-        <strong>{sale.team.name}</strong>
+        <strong>{sale.asset.label}</strong>
         <span>{buyer?.name ?? sale.buyerSyndicateId}</span>
       </div>
       <strong>{formatCurrency(sale.price)}</strong>
@@ -2256,7 +2391,7 @@ function ViewerOwnershipLedgerGroup({
   isMothership,
   hasActiveSearch
 }: {
-  group: { syndicate: Syndicate; sales: SoldTeamSummary[] };
+  group: { syndicate: Syndicate; sales: SoldAssetSummary[] };
   isMothership: boolean;
   hasActiveSearch: boolean;
 }) {
@@ -2284,12 +2419,11 @@ function ViewerOwnershipLedgerGroup({
       {group.sales.length ? (
         <div className="viewer-ledger-group__rows">
           {group.sales.map((sale) => (
-            <div key={`${group.syndicate.id}-${sale.team.id}-${sale.price}`} className="viewer-ledger-row">
+            <div key={`${group.syndicate.id}-${sale.asset.id}-${sale.price}`} className="viewer-ledger-row">
               <div className="viewer-ledger-row__team">
-                <strong>{sale.team.name}</strong>
-                <span>
-                  {sale.team.seed}-seed, {sale.team.region} region
-                </span>
+                <strong>{sale.asset.label}</strong>
+                <span>{formatAssetSubtitle(sale.asset, null)}</span>
+                <span>{formatAssetMembers(sale.asset)}</span>
               </div>
               <div className="viewer-ledger-row__price">
                 <strong>{formatCurrency(sale.price)}</strong>
@@ -2308,41 +2442,55 @@ function ViewerOwnershipLedgerGroup({
   );
 }
 
-function TeamCombobox({
-  teams,
-  soldLookup,
+function AssetCombobox({
+  assets,
+  soldAssets,
   value,
   inputRef,
   onChange
 }: {
-  teams: TeamProjection[];
-  soldLookup: Set<string>;
+  assets: AuctionAsset[];
+  soldAssets: SoldAssetSummary[];
   value: string;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  onChange: (teamId: string) => void;
+  onChange: (assetId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const selectedTeam = useMemo(() => teams.find((t) => t.id === value) ?? null, [teams, value]);
+  const soldLookup = useMemo(
+    () => new Set(soldAssets.map((sale) => sale.asset.id)),
+    [soldAssets]
+  );
+  const selectedAsset = useMemo(
+    () => assets.find((asset) => asset.id === value) ?? null,
+    [assets, value]
+  );
 
   const sorted = useMemo(() => {
-    const available = teams.filter((t) => !soldLookup.has(t.id)).sort((a, b) => a.seed - b.seed);
-    const sold = teams.filter((t) => soldLookup.has(t.id)).sort((a, b) => a.seed - b.seed);
+    const compareAssets = (left: AuctionAsset, right: AuctionAsset) => {
+      if (left.region === right.region) {
+        return (left.seedRange?.[0] ?? left.seed ?? 99) - (right.seedRange?.[0] ?? right.seed ?? 99);
+      }
+      return left.region.localeCompare(right.region);
+    };
+    const available = assets.filter((asset) => !soldLookup.has(asset.id)).sort(compareAssets);
+    const sold = assets.filter((asset) => soldLookup.has(asset.id)).sort(compareAssets);
     return [...available, ...sold];
-  }, [teams, soldLookup]);
+  }, [assets, soldLookup]);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return sorted;
     const lower = search.toLowerCase();
     return sorted.filter(
-      (t) =>
-        t.name.toLowerCase().includes(lower) ||
-        t.shortName.toLowerCase().includes(lower) ||
-        t.region.toLowerCase().includes(lower) ||
-        String(t.seed) === lower
+      (asset) =>
+        asset.label.toLowerCase().includes(lower) ||
+        asset.region.toLowerCase().includes(lower) ||
+        asset.members.some((member) => member.label.toLowerCase().includes(lower)) ||
+        asset.members.some((member) => String(member.seed) === lower) ||
+        (asset.seed !== null && String(asset.seed) === lower)
     );
   }, [sorted, search]);
 
@@ -2373,9 +2521,9 @@ function TeamCombobox({
       setHighlightIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const team = filtered[highlightIndex];
-      if (team && !soldLookup.has(team.id)) {
-        onChange(team.id);
+      const asset = filtered[highlightIndex];
+      if (asset && !soldLookup.has(asset.id)) {
+        onChange(asset.id);
         setOpen(false);
         setSearch("");
       }
@@ -2385,7 +2533,7 @@ function TeamCombobox({
     }
   }
 
-  const displayValue = open ? search : selectedTeam ? `${selectedTeam.seed}. ${selectedTeam.name}` : "";
+  const displayValue = open ? search : selectedAsset ? selectedAsset.label : "";
 
   return (
     <div className="combobox" ref={containerRef}>
@@ -2409,11 +2557,11 @@ function TeamCombobox({
           {filtered.length === 0 ? (
             <li className="combobox__empty">No teams found</li>
           ) : (
-            filtered.map((team, index) => {
-              const sold = soldLookup.has(team.id);
+            filtered.map((asset, index) => {
+              const sold = soldLookup.has(asset.id);
               return (
                 <li
-                  key={team.id}
+                  key={asset.id}
                   className={cn(
                     "combobox__item",
                     index === highlightIndex && "combobox__item--highlighted",
@@ -2422,16 +2570,16 @@ function TeamCombobox({
                   onMouseDown={(e) => {
                     e.preventDefault();
                     if (!sold) {
-                      onChange(team.id);
+                      onChange(asset.id);
                       setOpen(false);
                       setSearch("");
                     }
                   }}
                   onMouseEnter={() => setHighlightIndex(index)}
                 >
-                  <span className="combobox__seed">{team.seed}</span>
-                  <span className="combobox__name">{team.name}</span>
-                  <span className="combobox__region">{team.region}</span>
+                  <span className="combobox__seed">{formatAssetSeed(asset)}</span>
+                  <span className="combobox__name">{asset.label}</span>
+                  <span className="combobox__region">{asset.region}</span>
                   {sold ? <span className="combobox__sold-badge">sold</span> : null}
                 </li>
               );
@@ -2441,6 +2589,65 @@ function TeamCombobox({
       )}
     </div>
   );
+}
+
+function formatAssetSeed(asset: AuctionAsset) {
+  if (asset.seedRange) {
+    return `${asset.seedRange[0]}-${asset.seedRange[1]}`;
+  }
+
+  if (asset.seed !== null) {
+    return `${asset.seed}`;
+  }
+
+  return "--";
+}
+
+function formatAssetSubtitle(asset: AuctionAsset, nominatedTeam: TeamProjection | null) {
+  if (asset.type === "single_team") {
+    if (nominatedTeam) {
+      return `${nominatedTeam.seed}-seed, ${nominatedTeam.region} region`;
+    }
+
+    return `${formatAssetSeed(asset)}-seed, ${asset.region} region`;
+  }
+
+  if (asset.type === "play_in_slot") {
+    const matchup = asset.members.map((member) => member.label).join(" / ");
+    return `${formatAssetSeed(asset)}-seed play-in slot in the ${asset.region} region: ${matchup}`;
+  }
+
+  if (asset.type === "seed_bundle" && asset.seedRange) {
+    return "";
+  }
+
+  return `${asset.region} auction team`;
+}
+
+function formatAssetMembers(asset: AuctionAsset) {
+  if (asset.type === "single_team") {
+    return asset.members[0]?.label ?? asset.label;
+  }
+
+  if (asset.type === "play_in_slot") {
+    return `Includes ${asset.members.map((member) => member.label).join(" and ")}`;
+  }
+
+  return `Includes ${asset.members.map((member) => member.label).join(", ")}`;
+}
+
+function formatAssetMembersCompact(asset: AuctionAsset) {
+  if (asset.type === "single_team") {
+    return asset.members[0]?.label ?? asset.label;
+  }
+
+  if (asset.type === "play_in_slot") {
+    return `(${asset.members.map((member) => member.label).join(" / ")})`;
+  }
+
+  return `(${asset.members
+    .map((member) => `${member.seed} ${member.label}`)
+    .join(" • ")})`;
 }
 
 function displayNullableNumber(value: number | null) {
