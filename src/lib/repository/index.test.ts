@@ -403,6 +403,71 @@ describe("repository funding model", () => {
     expect(dashboard.session.liveState.nominatedTeamId).toBe("east-13");
   });
 
+  it("stores grouped purchases with underlying projection ids", async () => {
+    const { repository, session } = await createBaselineSession();
+    const regions = ["East", "West", "South", "Midwest"];
+    const bracketCsv = [
+      "id,name,shortName,region,seed,regionSlot",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            region,
+            String(seed),
+            `${region}-${seed}`
+          ].join(",");
+        })
+      )
+    ].join("\n");
+    const analysisCsv = [
+      "teamId,name,shortName,rating,offense,defense,tempo",
+      ...regions.flatMap((region) =>
+        Array.from({ length: 16 }, (_, index) => {
+          const seed = index + 1;
+          return [
+            `${region.toLowerCase()}-${seed}`,
+            `${region} Team ${seed}`,
+            `${region.slice(0, 2).toUpperCase()}${seed}`,
+            String(100 - seed * 0.3),
+            String(121 - seed * 0.25),
+            String(92 + seed * 0.2),
+            String(67 + (seed % 4))
+          ].join(",")
+        })
+      )
+    ].join("\n");
+
+    await repository.importSessionBracket(session.id, {
+      csvContent: bracketCsv,
+      sourceName: "Official Bracket"
+    });
+    await repository.importSessionAnalysis(session.id, {
+      csvContent: analysisCsv,
+      sourceName: "Metrics Feed"
+    });
+
+    const dashboard = await repository.recordPurchase(session.id, {
+      teamId: "bundle:east:13-16",
+      buyerSyndicateId: session.syndicates[0]!.id,
+      price: 2500
+    });
+
+    expect(dashboard.lastPurchase?.assetId).toBe("bundle:east:13-16");
+    expect(dashboard.lastPurchase?.teamId).toBe("east-13");
+    expect(dashboard.lastPurchase?.projectionIds).toEqual([
+      "east-13",
+      "east-14",
+      "east-15",
+      "east-16"
+    ]);
+    expect(
+      dashboard.ledger.find((candidate) => candidate.id === session.syndicates[0]!.id)?.ownedTeamIds
+    ).toEqual(expect.arrayContaining(["east-13", "east-14", "east-15", "east-16"]));
+  });
+
   it("clears stale projections when a replacement session-managed import no longer merges cleanly", async () => {
     const { repository, session } = await createBaselineSession();
     const regions = ["East", "West", "South", "Midwest"];

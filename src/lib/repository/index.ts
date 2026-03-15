@@ -2638,10 +2638,14 @@ function applyPurchaseMutation(
   }
 
   const createdAt = new Date().toISOString();
+  const representativeProjectionId =
+    asset.projectionIds.find((projectionId) =>
+      session.projections.some((projection) => projection.id === projectionId)
+    ) ?? asset.projectionIds[0] ?? asset.id;
   const purchase = {
     id: createId("purchase"),
     sessionId: session.id,
-    teamId: asset.id,
+    teamId: representativeProjectionId,
     assetId: asset.id,
     assetLabel: asset.label,
     projectionIds: asset.projectionIds,
@@ -2818,7 +2822,9 @@ function recalculateSyndicateValues(session: StoredAuctionSession): Syndicate[] 
       (purchase) => purchase.buyerSyndicateId === syndicate.id
     );
     const spend = ownedPurchases.reduce((total, purchase) => total + purchase.price, 0);
-    const ownedTeamIds = ownedPurchases.map((purchase) => purchase.teamId);
+    const ownedTeamIds = [...new Set(
+      ownedPurchases.flatMap((purchase) => purchase.projectionIds ?? [purchase.teamId])
+    )];
     const portfolioExpectedValue = ownedTeamIds.reduce(
       (total, teamId) =>
         total + (session.simulationSnapshot?.teamResults[teamId]?.expectedGrossPayout ?? 0),

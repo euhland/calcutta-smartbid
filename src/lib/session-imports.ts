@@ -443,7 +443,13 @@ function validateBracketStructure(teams: BracketImportTeam[]) {
   for (const [region, group] of byRegion.entries()) {
     const slotGroups = buildBracketSlotGroups(group);
     const seenSeeds = new Set<number>();
-    const expectedSeedMax = slotGroups.length;
+    const expectedSeedMax = 16;
+
+    if (slotGroups.length !== expectedSeedMax) {
+      issues.push(
+        `Bracket import contains ${slotGroups.length} bracket slots in ${region}. Exactly 16 slots are required per region.`
+      );
+    }
 
     for (const slotGroup of slotGroups) {
       const first = slotGroup[0];
