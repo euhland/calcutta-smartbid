@@ -14,6 +14,7 @@ import {
 } from "react";
 import { accessImportSampleCsv } from "@/lib/access-import";
 import { deriveMothershipFundingSnapshot } from "@/lib/funding";
+import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
 import {
   BudgetConfidence,
   DataSource,
@@ -153,8 +154,7 @@ export function SessionAdminCenter({
   const router = useRouter();
   const [config, setConfig] = useState(initialConfig);
   const [isPending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { error, notice, clearFeedback, showError, showNotice } = useFeedbackMessage();
   const [activeTab, setActiveTab] = useState<SessionTab>("settings");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
@@ -318,8 +318,7 @@ export function SessionAdminCenter({
     body: Record<string, unknown>,
     successMessage: string
   ) {
-    setError(null);
-    setNotice(null);
+    clearFeedback();
     const response = await fetch(url, {
       method,
       headers: {
@@ -339,7 +338,7 @@ export function SessionAdminCenter({
     } else {
       await refreshConfig();
     }
-    setNotice(successMessage);
+    showNotice(successMessage);
   }
 
   function toggleUser(userId: string) {
@@ -386,7 +385,7 @@ export function SessionAdminCenter({
           "Session access updated."
         );
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to save access.");
+        showError(submitError instanceof Error ? submitError.message : "Unable to save access.");
       }
     });
   }
@@ -403,7 +402,7 @@ export function SessionAdminCenter({
         );
         setSharedAccessCode("");
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error
             ? submitError.message
             : "Unable to rotate shared access code."
@@ -419,10 +418,9 @@ export function SessionAdminCenter({
 
     try {
       await navigator.clipboard.writeText(config.currentSharedAccessCode);
-      setError(null);
-      setNotice("Shared access code copied.");
+      showNotice("Shared access code copied.");
     } catch {
-      setError("Unable to copy the shared access code.");
+      showError("Unable to copy the shared access code.");
     }
   }
 
@@ -435,10 +433,9 @@ export function SessionAdminCenter({
       const url = new URL("/", window.location.origin);
       url.searchParams.set("code", config.currentSharedAccessCode);
       await navigator.clipboard.writeText(url.toString());
-      setError(null);
-      setNotice("Join link copied.");
+      showNotice("Join link copied.");
     } catch {
-      setError("Unable to copy the join link.");
+      showError("Unable to copy the join link.");
     }
   }
 
@@ -467,7 +464,7 @@ export function SessionAdminCenter({
           "Users imported into session access."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error
             ? submitError.message
             : "Unable to import session access users."
@@ -516,7 +513,7 @@ export function SessionAdminCenter({
           "Tracked syndicates updated."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to update syndicates."
         );
       }
@@ -534,7 +531,7 @@ export function SessionAdminCenter({
           "Funding plan updated."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to update funding plan."
         );
       }
@@ -552,7 +549,7 @@ export function SessionAdminCenter({
           "Payout structure updated."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error
             ? submitError.message
             : "Unable to update payout structure."
@@ -572,7 +569,7 @@ export function SessionAdminCenter({
           "Analysis settings updated."
         );
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error
             ? submitError.message
             : "Unable to update analysis settings."
@@ -580,7 +577,6 @@ export function SessionAdminCenter({
       }
     });
   }
-
 
   function buildImportSelection(
     mode: SourceSetupMode,
@@ -613,7 +609,9 @@ export function SessionAdminCenter({
           "Bracket import updated."
         );
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to import bracket.");
+        showError(
+          submitError instanceof Error ? submitError.message : "Unable to import bracket."
+        );
       }
     });
   }
@@ -635,7 +633,9 @@ export function SessionAdminCenter({
           "Analysis import updated."
         );
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "Unable to import analysis.");
+        showError(
+          submitError instanceof Error ? submitError.message : "Unable to import analysis."
+        );
       }
     });
   }
@@ -758,8 +758,7 @@ export function SessionAdminCenter({
   function onArchiveSession() {
     startTransition(async () => {
       try {
-        setError(null);
-        setNotice(null);
+        clearFeedback();
         const response = await fetch(
           `/api/admin/sessions/${config.session.id}/lifecycle`,
           {
@@ -777,9 +776,9 @@ export function SessionAdminCenter({
         }
 
         await refreshConfig();
-        setNotice("Session archived.");
+        showNotice("Session archived.");
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to archive session."
         );
       }
@@ -789,8 +788,7 @@ export function SessionAdminCenter({
   function onDeleteSession() {
     startTransition(async () => {
       try {
-        setError(null);
-        setNotice(null);
+        clearFeedback();
         const response = await fetch(
           `/api/admin/sessions/${config.session.id}/lifecycle`,
           {
@@ -810,7 +808,7 @@ export function SessionAdminCenter({
         router.push("/admin");
         router.refresh();
       } catch (submitError) {
-        setError(
+        showError(
           submitError instanceof Error ? submitError.message : "Unable to delete session."
         );
       }
@@ -1464,6 +1462,9 @@ export function SessionAdminCenter({
               </span>
               <span className="status-pill">
                 {config.session.importReadiness.mergedProjectionCount} merged teams
+              </span>
+              <span className="status-pill">
+                {(config.session.auctionAssets ?? []).length} auction teams
               </span>
             </div>
           </div>
