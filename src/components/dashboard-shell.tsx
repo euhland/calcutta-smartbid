@@ -435,6 +435,26 @@ export function DashboardShell({
   const analysisSimConfidenceDisplay = selectedSimulation
     ? `${formatCurrency(selectedSimulation.confidenceBand[0])}-${formatCurrency(selectedSimulation.confidenceBand[1])}`
     : "--";
+  const selectedNateSilverProjection = analysisDetailTeam?.nateSilverProjection ?? null;
+  const hasSelectedNateSilverProjection = analysisRoundLadder.some(({ stage }) => {
+    if (!selectedNateSilverProjection) {
+      return false;
+    }
+    switch (stage) {
+      case "roundOf32":
+        return selectedNateSilverProjection.roundOf32 !== null;
+      case "sweet16":
+        return selectedNateSilverProjection.sweet16 !== null;
+      case "elite8":
+        return selectedNateSilverProjection.elite8 !== null;
+      case "finalFour":
+        return selectedNateSilverProjection.finalFour !== null;
+      case "champion":
+        return selectedNateSilverProjection.champion !== null;
+      default:
+        return false;
+    }
+  });
   const breakEvenStage = selectedTeam
     ? getBreakEvenStage(currentBid, dashboard.session.payoutRules)
     : null;
@@ -803,40 +823,99 @@ export function DashboardShell({
                       </div>
                     </div>
 
-                    <div className="analysis-round-ladder" aria-label="Round reach probabilities">
-                      {analysisRoundLadder.map(({ stage, shortLabel, label }) => {
-                        const probability = selectedSimulation?.roundProbabilities[stage] ?? null;
+                    <div className="analysis-round-ladder-group">
+                      <div className="analysis-round-ladder" aria-label="Round reach probabilities">
+                        {analysisRoundLadder.map(({ stage, shortLabel, label }) => {
+                          const probability = selectedSimulation?.roundProbabilities[stage] ?? null;
 
-                        return (
-                          <div key={stage} className="analysis-round-ladder__step">
-                            <div className="analysis-round-ladder__labels">
-                              <span className="analysis-round-ladder__short">{shortLabel}</span>
-                              <span className="analysis-round-ladder__value">
-                                {probability === null ? "--" : formatPercent(probability)}
-                              </span>
+                          return (
+                            <div key={stage} className="analysis-round-ladder__step">
+                              <div className="analysis-round-ladder__labels">
+                                <span className="analysis-round-ladder__short">{shortLabel}</span>
+                                <span className="analysis-round-ladder__value">
+                                  {probability === null ? "--" : formatPercent(probability)}
+                                </span>
+                              </div>
+                              <div
+                                className="analysis-round-ladder__track"
+                                role="presentation"
+                                aria-hidden="true"
+                              >
+                                <span
+                                  className="analysis-round-ladder__fill"
+                                  style={{
+                                    width: `${
+                                      probability === null
+                                        ? 0
+                                        : probability > 0
+                                          ? Math.max(3, Math.min(100, probability * 100))
+                                          : 0
+                                    }%`
+                                  }}
+                                />
+                              </div>
+                              <span className="analysis-round-ladder__caption">{label}</span>
                             </div>
-                            <div
-                              className="analysis-round-ladder__track"
-                              role="presentation"
-                              aria-hidden="true"
-                            >
-                              <span
-                                className="analysis-round-ladder__fill"
-                                style={{
-                                  width: `${
-                                    probability === null
-                                      ? 0
-                                      : probability > 0
-                                        ? Math.max(3, Math.min(100, probability * 100))
-                                        : 0
-                                  }%`
-                                }}
-                              />
-                            </div>
-                            <span className="analysis-round-ladder__caption">{label}</span>
+                          );
+                        })}
+                      </div>
+
+                      {hasSelectedNateSilverProjection ? (
+                        <div className="analysis-round-ladder-group__secondary">
+                          <span className="analysis-round-ladder-group__label">
+                            Nate Silver projection
+                          </span>
+                          <div
+                            className="analysis-round-ladder"
+                            aria-label="Nate Silver round reach probabilities"
+                          >
+                            {analysisRoundLadder.map(({ stage, shortLabel, label }) => {
+                              const probability =
+                                !selectedNateSilverProjection
+                                  ? null
+                                  : stage === "roundOf32"
+                                      ? selectedNateSilverProjection.roundOf32
+                                      : stage === "sweet16"
+                                        ? selectedNateSilverProjection.sweet16
+                                        : stage === "elite8"
+                                          ? selectedNateSilverProjection.elite8
+                                          : stage === "finalFour"
+                                            ? selectedNateSilverProjection.finalFour
+                                            : selectedNateSilverProjection.champion;
+
+                              return (
+                                <div key={`nate-${stage}`} className="analysis-round-ladder__step">
+                                  <div className="analysis-round-ladder__labels">
+                                    <span className="analysis-round-ladder__short">{shortLabel}</span>
+                                    <span className="analysis-round-ladder__value">
+                                      {probability === null ? "--" : formatPercent(probability)}
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="analysis-round-ladder__track"
+                                    role="presentation"
+                                    aria-hidden="true"
+                                  >
+                                    <span
+                                      className="analysis-round-ladder__fill"
+                                      style={{
+                                        width: `${
+                                          probability === null
+                                            ? 0
+                                            : probability > 0
+                                              ? Math.max(3, Math.min(100, probability * 100))
+                                              : 0
+                                        }%`
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="analysis-round-ladder__caption">{label}</span>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="analysis-selected-panel__toolbar">

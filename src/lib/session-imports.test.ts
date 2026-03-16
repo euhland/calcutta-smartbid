@@ -88,8 +88,8 @@ describe("session-managed imports", () => {
 
   it("accepts NCAA-style power rating headers in the analysis import", () => {
     const csv = [
-      "Team Name,Adjusted Offense Efficiency,Adjust Defense Efficiency,Power Rating - Chance of Beating Average D1 Team,Adjusted Tempo",
-      "Duke,123.1,93.2,0.954,68.9"
+      "Team Name,Adjusted Offense Efficiency,Adjust Defense Efficiency,Power Rating - Chance of Beating Average D1 Team,Adjusted Tempo,Wins Above Bubble",
+      "Duke,123.1,93.2,0.954,68.9,12"
     ].join("\n");
 
     const analysis = parseSessionAnalysisImport(csv, "NCAA DATA");
@@ -99,7 +99,104 @@ describe("session-managed imports", () => {
       offense: 123.1,
       defense: 93.2,
       rating: 0.954,
-      tempo: 68.9
+      tempo: 68.9,
+      scouting: {
+        kenpomRank: 1,
+        quadWins: {
+          q1: 11
+        },
+        rankedWins: 8
+      }
+    });
+  });
+
+  it("does not treat three point rate as three point percentage", () => {
+    const csv = [
+      "Team Name,Adjusted Offense Efficiency,Adjust Defense Efficiency,Power Rating - Chance of Beating Average D1 Team,Adjusted Tempo,Three Point Rate,Wins Above Bubble",
+      "Duke,123.1,93.2,0.954,68.9,54.4,12"
+    ].join("\n");
+
+    const analysis = parseSessionAnalysisImport(csv, "NCAA DATA");
+
+    expect(analysis.teams[0]).toMatchObject({
+      name: "Duke",
+      scouting: {
+        kenpomRank: 1
+      }
+    });
+    expect(analysis.teams[0].scouting?.threePointPct).toBeUndefined();
+  });
+
+  it("derives useful scouting when session analysis imports only provide NCAA-style columns", () => {
+    const bracketCsv = [
+      "id,name,shortName,region,seed,regionSlot,site,subregion",
+      "duke,Duke,DUKE,East,1,East-1,East Site,East Pod",
+      "houston,Houston,HOU,West,1,West-1,West Site,West Pod",
+      "florida,Florida,FLA,South,1,South-1,South Site,South Pod",
+      "auburn,Auburn,AUB,Midwest,1,Midwest-1,Midwest Site,Midwest Pod"
+    ].join("\n");
+    const analysisCsv = [
+      "Team Name,Adjusted Offense Efficiency,Adjust Defense Efficiency,Power Rating - Chance of Beating Average D1 Team,Adjusted Tempo,Wins Above Bubble",
+      "Duke,128.582,90.5437,0.982595,66.018,12",
+      "Houston,127.100,89.9000,0.971000,64.500,10",
+      "Florida,125.300,92.2000,0.962000,68.100,8",
+      "Auburn,124.700,93.4000,0.955000,69.200,7"
+    ].join("\n");
+
+    const merged = mergeBracketAndAnalysisImports(
+      parseSessionBracketImport(bracketCsv, "Bracket"),
+      parseSessionAnalysisImport(analysisCsv, "NCAA DATA")
+    );
+    const duke = merged.projections.find((team) => team.id === "duke");
+
+    expect(duke?.scouting).toMatchObject({
+      netRank: 1,
+      kenpomRank: 1,
+      rankedWins: 8,
+      quadWins: {
+        q1: 11
+      },
+      offenseStyle: "Spacing-heavy half-court shot creation"
+    });
+  });
+
+  it("parses Nate Silver projection columns when present", () => {
+    const csv = [
+      "teamId,name,shortName,rating,offense,defense,tempo,Nate Silver Projection Seed,Nate Silver Projection - Round of 64,Nate Silver Projection - Round of 32,Nate Silver Projection - Sweet 16,Nate Silver Projection - Elite 8,Nate Silver Projection - Final Four,Nate Silver Projection - Championship Game,Nate Silver Projection - Champion",
+      "duke,Duke,DUKE,0.982595,128.582,90.5437,66.018,1,1,0.99,0.759,0.552,0.409,0.258,0.158"
+    ].join("\n");
+
+    const analysis = parseSessionAnalysisImport(csv, "Merged Metrics");
+
+    expect(analysis.teams[0].nateSilverProjection).toEqual({
+      seed: "1",
+      roundOf64: 1,
+      roundOf32: 0.99,
+      sweet16: 0.759,
+      elite8: 0.552,
+      finalFour: 0.409,
+      championshipGame: 0.258,
+      champion: 0.158
+    });
+  });
+
+  it("keeps partial Nate Silver projection rows nullable instead of failing", () => {
+    const csv = [
+      "teamId,name,shortName,rating,offense,defense,tempo,Nate Silver Projection Seed,Nate Silver Projection - Round of 32,Nate Silver Projection - Champion",
+      "duke,Duke,DUKE,0.982595,128.582,90.5437,66.018,1,0.99,"
+    ].join("\n");
+
+    const analysis = parseSessionAnalysisImport(csv, "Merged Metrics");
+
+    expect(analysis.teams[0].nateSilverProjection).toEqual({
+      seed: "1",
+      roundOf64: null,
+      roundOf32: 0.99,
+      sweet16: null,
+      elite8: null,
+      finalFour: null,
+      championshipGame: null,
+      champion: null
     });
   });
 

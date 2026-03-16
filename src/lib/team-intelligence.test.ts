@@ -124,4 +124,64 @@ describe("buildTeamIntelligence", () => {
     expect(selected).not.toBeNull();
     expect(selected?.row.risks).toContain("Limited scouting data increases uncertainty");
   });
+
+  it("does not add the uncertainty fallback when sparse data still yields a clear strength", () => {
+    const teamsWithPartialSignals: TeamProjection[] = [
+      {
+        id: "duke",
+        name: "Duke",
+        shortName: "DUKE",
+        region: "East",
+        seed: 1,
+        rating: 0.98,
+        offense: 128,
+        defense: 91,
+        tempo: 66,
+        source: "test",
+        scouting: {
+          kenpomRank: 1,
+          quadWins: { q1: 12, q2: 8, q3: 7, q4: 7 }
+        }
+      },
+      {
+        id: "houston",
+        name: "Houston",
+        shortName: "HOU",
+        region: "Midwest",
+        seed: 1,
+        rating: 0.97,
+        offense: 127,
+        defense: 90,
+        tempo: 65,
+        source: "test",
+        scouting: {
+          kenpomRank: 9,
+          quadWins: { q1: 8, q2: 7, q3: 6, q4: 6 }
+        }
+      },
+      {
+        id: "florida",
+        name: "Florida",
+        shortName: "FLA",
+        region: "West",
+        seed: 1,
+        rating: 0.96,
+        offense: 125,
+        defense: 92,
+        tempo: 68,
+        source: "test",
+        scouting: {
+          kenpomRank: 15,
+          quadWins: { q1: 6, q2: 6, q3: 5, q4: 5 }
+        }
+      }
+    ];
+
+    const intelligence = buildTeamIntelligence(teamsWithPartialSignals, "duke");
+    const selected = intelligence.selected;
+
+    expect(selected).not.toBeNull();
+    expect(selected?.row.strengths).toContain("High-end Quad 1 resume");
+    expect(selected?.row.risks).not.toContain("Limited scouting data increases uncertainty");
+  });
 });

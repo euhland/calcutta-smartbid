@@ -1,6 +1,7 @@
 import {
   AnalysisImportTeam,
   BracketImportTeam,
+  NateSilverProjection,
   SessionAnalysisImport,
   SessionBracketImport,
   SessionImportReadiness,
@@ -10,6 +11,7 @@ import {
   TeamScoutingProfile
 } from "@/lib/types";
 import { buildPlayInProjectionId } from "@/lib/auction-assets";
+import { clamp } from "@/lib/utils";
 
 interface MergeBracketAnalysisResult {
   projections: TeamProjection[];
@@ -86,7 +88,17 @@ const analysisHeaderAliases = {
   q1Wins: ["quadrant 1 wins", "quad 1 wins", "q1 wins"],
   q2Wins: ["quadrant 2 wins", "quad 2 wins", "q2 wins"],
   q3Wins: ["quadrant 3 wins", "quad 3 wins", "q3 wins"],
-  q4Wins: ["quadrant 4 wins", "quad 4 wins", "q4 wins"]
+  q4Wins: ["quadrant 4 wins", "quad 4 wins", "q4 wins"],
+  winsAboveBubble: ["wins above bubble", "winsabovebubble"]
+  ,
+  nateSilverSeed: ["nate silver projection seed"],
+  nateSilverRoundOf64: ["nate silver projection round of 64"],
+  nateSilverRoundOf32: ["nate silver projection round of 32"],
+  nateSilverSweet16: ["nate silver projection sweet 16"],
+  nateSilverElite8: ["nate silver projection elite 8"],
+  nateSilverFinalFour: ["nate silver projection final four"],
+  nateSilverChampionshipGame: ["nate silver projection championship game"],
+  nateSilverChampion: ["nate silver projection champion"]
 } as const;
 
 export function parseSessionBracketImport(
@@ -192,8 +204,35 @@ export function parseSessionAnalysisImport(
   const q2WinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.q2Wins);
   const q3WinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.q3Wins);
   const q4WinsIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.q4Wins);
+  const winsAboveBubbleIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.winsAboveBubble);
+  const nateSilverSeedIndex = getOptionalIndex(headerLookup, analysisHeaderAliases.nateSilverSeed);
+  const nateSilverRoundOf64Index = getOptionalIndex(
+    headerLookup,
+    analysisHeaderAliases.nateSilverRoundOf64
+  );
+  const nateSilverRoundOf32Index = getOptionalIndex(
+    headerLookup,
+    analysisHeaderAliases.nateSilverRoundOf32
+  );
+  const nateSilverSweet16Index = getOptionalIndex(
+    headerLookup,
+    analysisHeaderAliases.nateSilverSweet16
+  );
+  const nateSilverElite8Index = getOptionalIndex(headerLookup, analysisHeaderAliases.nateSilverElite8);
+  const nateSilverFinalFourIndex = getOptionalIndex(
+    headerLookup,
+    analysisHeaderAliases.nateSilverFinalFour
+  );
+  const nateSilverChampionshipGameIndex = getOptionalIndex(
+    headerLookup,
+    analysisHeaderAliases.nateSilverChampionshipGame
+  );
+  const nateSilverChampionIndex = getOptionalIndex(
+    headerLookup,
+    analysisHeaderAliases.nateSilverChampion
+  );
 
-  const teams = rows
+  const parsedTeams = rows
     .slice(1)
     .filter((row) => row.some((value) => value.trim() !== ""))
     .map((row) => {
@@ -212,13 +251,6 @@ export function parseSessionAnalysisImport(
         numberOrNull(row[q3WinsIndex], true),
         numberOrNull(row[q4WinsIndex], true)
       );
-      const scouting = buildScoutingProfile({
-        netRank: numberOrNull(row[netRankIndex], true),
-        kenpomRank: numberOrNull(row[kenpomRankIndex], true),
-        rankedWins: numberOrNull(row[rankedWinsIndex], true),
-        threePointPct: numberOrNull(row[threePointPctIndex], false),
-        quadWins
-      });
 
       return {
         teamId: stringOrNull(row[teamIdIndex]),
@@ -228,13 +260,45 @@ export function parseSessionAnalysisImport(
         offense,
         defense,
         tempo,
-        scouting
-      } satisfies AnalysisImportTeam;
+        scouting: {
+          netRank: numberOrNull(row[netRankIndex], true),
+          kenpomRank: numberOrNull(row[kenpomRankIndex], true),
+          rankedWins: numberOrNull(row[rankedWinsIndex], true),
+          threePointPct: numberOrNull(row[threePointPctIndex], false),
+          quadWins
+        },
+        winsAboveBubble: numberOrNull(row[winsAboveBubbleIndex], false),
+        nateSilverProjection: buildNateSilverProjection({
+          seed: row[nateSilverSeedIndex],
+          roundOf64: row[nateSilverRoundOf64Index],
+          roundOf32: row[nateSilverRoundOf32Index],
+          sweet16: row[nateSilverSweet16Index],
+          elite8: row[nateSilverElite8Index],
+          finalFour: row[nateSilverFinalFourIndex],
+          championshipGame: row[nateSilverChampionshipGameIndex],
+          champion: row[nateSilverChampionIndex]
+        })
+      };
     });
 
-  if (teams.length === 0) {
+  if (parsedTeams.length === 0) {
     throw new Error("Analysis CSV did not contain any team rows.");
   }
+
+  const sortedByRating = [...parsedTeams].sort((left, right) => right.rating - left.rating);
+  const derivedRankLookup = new Map(sortedByRating.map((team, index) => [team, index + 1]));
+  const teams = parsedTeams.map((team) => ({
+    teamId: team.teamId,
+    name: team.name,
+    shortName: team.shortName,
+    rating: team.rating,
+    offense: team.offense,
+    defense: team.defense,
+    tempo: team.tempo,
+    winsAboveBubble: team.winsAboveBubble,
+    scouting: enrichScoutingProfile(team, derivedRankLookup.get(team) ?? null),
+    nateSilverProjection: team.nateSilverProjection
+  })) satisfies AnalysisImportTeam[];
 
   return {
     sourceName,
@@ -252,7 +316,7 @@ export function mergeBracketAndAnalysisImports(
   const issues: string[] = [];
   const warnings: string[] = [];
   const bracketTeams = bracketImport.teams;
-  const analysisTeams = analysisImport.teams;
+  const analysisTeams = enrichAnalysisImportTeams(analysisImport.teams);
 
   const structureIssues = validateBracketStructure(bracketTeams);
   issues.push(...structureIssues);
@@ -303,7 +367,10 @@ export function mergeBracketAndAnalysisImports(
         defense: averaged.defense,
         tempo: averaged.tempo,
         source: `${bracketImport.sourceName} + ${analysisImport.sourceName}`,
-        scouting: averaged.scouting
+        scouting: averaged.scouting,
+        nateSilverProjection: averageNateSilverProjections(
+          matches.map((entry) => entry.match!.team.nateSilverProjection)
+        )
       } satisfies TeamProjection;
     }
 
@@ -330,7 +397,8 @@ export function mergeBracketAndAnalysisImports(
       defense: match.team.defense,
       tempo: match.team.tempo,
       source: `${bracketImport.sourceName} + ${analysisImport.sourceName}`,
-      scouting: match.team.scouting
+      scouting: match.team.scouting,
+      nateSilverProjection: match.team.nateSilverProjection
     } satisfies TeamProjection;
   });
 
@@ -342,7 +410,9 @@ export function mergeBracketAndAnalysisImports(
   }
 
   return {
-    projections: projections.filter((team): team is TeamProjection => team !== null),
+    projections: enrichProjectionFieldScouting(
+      projections.filter((team): team is TeamProjection => team !== null)
+    ),
     issues: uniqueMessages(issues),
     warnings: uniqueMessages(warnings)
   };
@@ -614,15 +684,162 @@ function buildScoutingProfile(input: {
   rankedWins: number | null;
   threePointPct: number | null;
   quadWins: TeamScoutingProfile["quadWins"] | undefined;
+  offenseStyle?: string;
+  defenseStyle?: string;
 }) {
   const scouting: TeamScoutingProfile = {
     netRank: input.netRank ?? undefined,
     kenpomRank: input.kenpomRank ?? undefined,
     rankedWins: input.rankedWins ?? undefined,
     threePointPct: input.threePointPct ?? undefined,
-    quadWins: input.quadWins
+    quadWins: input.quadWins,
+    offenseStyle: input.offenseStyle,
+    defenseStyle: input.defenseStyle
   };
   return Object.values(scouting).some((value) => value !== undefined) ? scouting : undefined;
+}
+
+function enrichScoutingProfile(
+  team: {
+    rating: number;
+    offense: number;
+    defense: number;
+    tempo: number;
+    scouting: {
+      netRank: number | null;
+      kenpomRank: number | null;
+      rankedWins: number | null;
+      threePointPct: number | null;
+      quadWins: TeamScoutingProfile["quadWins"] | undefined;
+    };
+    winsAboveBubble: number | null;
+  },
+  derivedRank: number | null
+) {
+  const explicitQuadWins = team.scouting.quadWins;
+  const inferredQuadWins =
+    explicitQuadWins ?? (team.winsAboveBubble !== null ? inferQuadWins(team.winsAboveBubble) : undefined);
+  const q1Wins = inferredQuadWins?.q1 ?? null;
+
+  return buildScoutingProfile({
+    netRank: team.scouting.netRank ?? derivedRank,
+    kenpomRank: team.scouting.kenpomRank ?? derivedRank,
+    rankedWins: team.scouting.rankedWins ?? inferRankedWins(q1Wins, derivedRank),
+    threePointPct: team.scouting.threePointPct,
+    quadWins: inferredQuadWins,
+    offenseStyle: describeOffense(team.offense, team.tempo),
+    defenseStyle: describeDefense(team.defense)
+  });
+}
+
+export function enrichAnalysisImportTeams(teams: AnalysisImportTeam[]) {
+  const sortedByRating = [...teams].sort((left, right) => right.rating - left.rating);
+  const derivedRankLookup = new Map(sortedByRating.map((team, index) => [team, index + 1]));
+
+  return teams.map((team) => ({
+    ...team,
+    scouting: enrichScoutingProfile(
+      {
+        rating: team.rating,
+        offense: team.offense,
+        defense: team.defense,
+        tempo: team.tempo,
+        scouting: {
+          netRank: team.scouting?.netRank ?? null,
+          kenpomRank: team.scouting?.kenpomRank ?? null,
+          rankedWins: team.scouting?.rankedWins ?? null,
+          threePointPct: team.scouting?.threePointPct ?? null,
+          quadWins: team.scouting?.quadWins
+        },
+        winsAboveBubble: team.winsAboveBubble ?? null
+      },
+      derivedRankLookup.get(team) ?? null
+    ),
+    nateSilverProjection: team.nateSilverProjection
+  }));
+}
+
+export function enrichProjectionFieldScouting(projections: TeamProjection[]) {
+  const sortedByRating = [...projections].sort((left, right) => right.rating - left.rating);
+  const derivedRankLookup = new Map(sortedByRating.map((team, index) => [team.id, index + 1]));
+
+  return projections.map((team) => ({
+    ...team,
+    scouting: enrichScoutingProfile(
+      {
+        rating: team.rating,
+        offense: team.offense,
+        defense: team.defense,
+        tempo: team.tempo,
+        scouting: {
+          netRank: team.scouting?.netRank ?? null,
+          kenpomRank: team.scouting?.kenpomRank ?? null,
+          rankedWins: team.scouting?.rankedWins ?? null,
+          threePointPct: team.scouting?.threePointPct ?? null,
+          quadWins: team.scouting?.quadWins
+        },
+        winsAboveBubble: null
+      },
+      derivedRankLookup.get(team.id) ?? null
+    ),
+    nateSilverProjection: team.nateSilverProjection
+  }));
+}
+
+function buildNateSilverProjection(input: {
+  seed: string | undefined;
+  roundOf64: string | undefined;
+  roundOf32: string | undefined;
+  sweet16: string | undefined;
+  elite8: string | undefined;
+  finalFour: string | undefined;
+  championshipGame: string | undefined;
+  champion: string | undefined;
+}) {
+  const projection: NateSilverProjection = {
+    seed: stringOrNull(input.seed),
+    roundOf64: numberOrNull(input.roundOf64, false),
+    roundOf32: numberOrNull(input.roundOf32, false),
+    sweet16: numberOrNull(input.sweet16, false),
+    elite8: numberOrNull(input.elite8, false),
+    finalFour: numberOrNull(input.finalFour, false),
+    championshipGame: numberOrNull(input.championshipGame, false),
+    champion: numberOrNull(input.champion, false)
+  };
+
+  return Object.values(projection).some((value) => value !== null) ? projection : undefined;
+}
+
+function averageNateSilverProjections(
+  projections: Array<NateSilverProjection | undefined>
+): NateSilverProjection | undefined {
+  const available = projections.filter(
+    (projection): projection is NateSilverProjection => Boolean(projection)
+  );
+  if (available.length === 0) {
+    return undefined;
+  }
+
+  const averageMetric = (selector: (projection: NateSilverProjection) => number | null) => {
+    const values = available
+      .map(selector)
+      .filter((value): value is number => typeof value === "number");
+    if (values.length === 0) {
+      return null;
+    }
+    return values.reduce((sum, value) => sum + value, 0) / values.length;
+  };
+
+  return {
+    seed: available[0]?.seed ?? null,
+    roundOf64: averageMetric((projection) => projection.roundOf64),
+    roundOf32: averageMetric((projection) => projection.roundOf32),
+    sweet16: averageMetric((projection) => projection.sweet16),
+    elite8: averageMetric((projection) => projection.elite8),
+    finalFour: averageMetric((projection) => projection.finalFour),
+    championshipGame: averageMetric((projection) => projection.championshipGame),
+    champion: averageMetric((projection) => projection.champion)
+  };
 }
 
 function buildQuadWins(
@@ -640,6 +857,51 @@ function buildQuadWins(
     q3: q3 as number,
     q4: q4 as number
   };
+}
+
+function inferQuadWins(winsAboveBubble: number) {
+  const signal = winsAboveBubble + 10;
+  return {
+    q1: clamp(Math.round(signal / 2), 0, 12),
+    q2: clamp(Math.round((signal + 4) / 3), 0, 10),
+    q3: clamp(Math.round((signal + 8) / 4), 0, 10),
+    q4: clamp(Math.round((signal + 12) / 5), 0, 10)
+  };
+}
+
+function inferRankedWins(q1Wins: number | null, derivedRank: number | null) {
+  if (q1Wins === null) {
+    return null;
+  }
+
+  const bonus = derivedRank !== null && derivedRank <= 16 ? 1 : 0;
+  return clamp(Math.round(q1Wins * 0.65 + bonus), 0, 12);
+}
+
+function describeOffense(offense: number, tempo: number) {
+  if (tempo >= 71.5) {
+    return "Transition-forward tempo offense";
+  }
+  if (offense >= 120) {
+    return "Spacing-heavy half-court shot creation";
+  }
+  if (offense <= 110) {
+    return "Paint-leaning offense with selective kick-outs";
+  }
+  return "Balanced attack with pace control";
+}
+
+function describeDefense(defense: number) {
+  if (defense <= 93) {
+    return "Switch pressure with elite point-of-attack defense";
+  }
+  if (defense <= 98) {
+    return "Disciplined man defense and clean rotations";
+  }
+  if (defense <= 103) {
+    return "Containment-first shell defense";
+  }
+  return "High-variance defense that concedes runs";
 }
 
 function parseCsvRows(content: string) {
