@@ -130,7 +130,7 @@ export function buildTeamIntelligence(
         },
         fieldAverages
       );
-      if (risks.length === 0 && scoutingCoverage <= 0.45) {
+      if (strengths.length === 0 && risks.length === 0 && scoutingCoverage <= 0.45) {
         risks.push("Limited scouting data increases uncertainty");
       }
 

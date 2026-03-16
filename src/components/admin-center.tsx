@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { LogoutButton } from "@/components/logout-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { readErrorMessage } from "@/lib/http-client";
 import {
   AdminCenterData,
   DataSource,
@@ -215,8 +216,7 @@ export function AdminCenter({
   const refreshData = useCallback(async () => {
     const response = await fetch("/api/admin/center", { cache: "no-store" });
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Unable to refresh admin center.");
+      throw new Error(await readErrorMessage(response, "Unable to refresh admin center."));
     }
 
     const payload = (await response.json()) as AdminCenterData;
@@ -259,8 +259,7 @@ export function AdminCenter({
     });
 
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Request failed.");
+      throw new Error(await readErrorMessage(response, "Request failed."));
     }
 
     await refreshData();
@@ -278,8 +277,7 @@ export function AdminCenter({
     });
 
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Unable to archive session.");
+      throw new Error(await readErrorMessage(response, "Unable to archive session."));
     }
 
     await refreshData();
@@ -297,8 +295,7 @@ export function AdminCenter({
     });
 
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Unable to delete session.");
+      throw new Error(await readErrorMessage(response, "Unable to delete session."));
     }
 
     await refreshData();
@@ -483,8 +480,7 @@ export function AdminCenter({
           method: "POST"
         });
         if (!response.ok) {
-          const payload = (await response.json()) as { error?: string };
-          throw new Error(payload.error ?? "Unable to test data source.");
+          throw new Error(await readErrorMessage(response, "Unable to test data source."));
         }
 
         await refreshData();

@@ -36,6 +36,7 @@ import {
 } from "@/lib/providers/projections";
 import {
   buildSessionImportReadiness,
+  enrichProjectionFieldScouting,
   mergeBracketAndAnalysisImports,
   parseSessionAnalysisImport,
   parseSessionBracketImport
@@ -1151,9 +1152,11 @@ class SupabaseSessionRepository implements SessionRepository {
 
     const platformUsers = mapPlatformUsers(usersResult.data);
     const baseProjections = sortProjections(
-      (((projectionsResult.data as Array<Record<string, unknown>> | null) ?? []).map(
-        mapTeamProjectionRow
-      ) as TeamProjection[])
+      enrichProjectionFieldScouting(
+        (((projectionsResult.data as Array<Record<string, unknown>> | null) ?? []).map(
+          mapTeamProjectionRow
+        ) as TeamProjection[])
+      )
     );
 
     const overrides = Object.fromEntries(
@@ -3558,9 +3561,42 @@ function normalizeAnalysisImport(
       offense: Number(team.offense),
       defense: Number(team.defense),
       tempo: Number(team.tempo),
-      scouting: team.scouting
+      winsAboveBubble:
+        typeof team.winsAboveBubble === "number" ? Number(team.winsAboveBubble) : null,
+      scouting: team.scouting,
+      nateSilverProjection: team.nateSilverProjection
     }))
   };
+}
+
+function reattachAnalysisImportMetadata(
+  projections: TeamProjection[],
+  bracketImport: SessionBracketImport | null,
+  analysisImport: SessionAnalysisImport | null
+) {
+  if (!bracketImport || !analysisImport || projections.length === 0) {
+    return projections;
+  }
+
+  const merged = mergeBracketAndAnalysisImports(bracketImport, analysisImport);
+  if (merged.projections.length === 0) {
+    return projections;
+  }
+
+  const metadataById = new Map(
+    merged.projections.map((projection) => [
+      projection.id,
+      {
+        nateSilverProjection: projection.nateSilverProjection
+      }
+    ])
+  );
+
+  return projections.map((projection) => ({
+    ...projection,
+    nateSilverProjection:
+      metadataById.get(projection.id)?.nateSilverProjection ?? projection.nateSilverProjection
+  }));
 }
 
 function normalizeSessionShape(
@@ -3602,13 +3638,21 @@ function normalizeSessionShape(
     session.baseProjections ?? session.projections ?? []
   );
   const bracketState = normalizeBracketState(session.bracketState);
-  const baseProjections = sortProjections(session.baseProjections ?? session.projections ?? []);
-  const projections =
-    session.projections && session.baseProjections
-      ? sortProjections(session.projections)
-      : applyProjectionOverrides(baseProjections, projectionOverrides);
   const bracketImport = normalizeBracketImport(session.bracketImport);
   const analysisImport = normalizeAnalysisImport(session.analysisImport);
+  const baseProjections = sortProjections(
+    reattachAnalysisImportMetadata(
+      session.baseProjections ?? session.projections ?? [],
+      bracketImport,
+      analysisImport
+    )
+  );
+  const projections =
+    session.projections && session.baseProjections
+      ? sortProjections(
+          reattachAnalysisImportMetadata(session.projections, bracketImport, analysisImport)
+        )
+      : applyProjectionOverrides(baseProjections, projectionOverrides);
   const auctionAssets = buildAuctionAssets({
     baseProjections,
     bracketImport

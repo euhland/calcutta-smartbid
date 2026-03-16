@@ -98,6 +98,18 @@ export interface TeamProjection {
   tempo: number;
   source: string;
   scouting?: TeamScoutingProfile;
+  nateSilverProjection?: NateSilverProjection;
+}
+
+export interface NateSilverProjection {
+  seed: string | null;
+  roundOf64: number | null;
+  roundOf32: number | null;
+  sweet16: number | null;
+  elite8: number | null;
+  finalFour: number | null;
+  championshipGame: number | null;
+  champion: number | null;
 }
 
 export interface BracketImportTeam {
@@ -130,7 +142,9 @@ export interface AnalysisImportTeam {
   offense: number;
   defense: number;
   tempo: number;
+  winsAboveBubble?: number | null;
   scouting?: TeamScoutingProfile;
+  nateSilverProjection?: NateSilverProjection;
 }
 
 export interface SessionAnalysisImport {

@@ -413,7 +413,7 @@ describe("repository funding model", () => {
       )
     ].join("\n");
     const analysisCsv = [
-      "teamId,name,shortName,rating,offense,defense,tempo",
+      "teamId,name,shortName,rating,offense,defense,tempo,Nate Silver Projection Seed,Nate Silver Projection - Round of 64,Nate Silver Projection - Round of 32,Nate Silver Projection - Sweet 16,Nate Silver Projection - Elite 8,Nate Silver Projection - Final Four,Nate Silver Projection - Championship Game,Nate Silver Projection - Champion",
       ...regions.flatMap((region) =>
         Array.from({ length: 16 }, (_, index) => {
           const seed = index + 1;
@@ -424,7 +424,15 @@ describe("repository funding model", () => {
             String(100 - seed * 0.3),
             String(121 - seed * 0.25),
             String(92 + seed * 0.2),
-            String(67 + (seed % 4))
+            String(67 + (seed % 4)),
+            String(seed),
+            "1",
+            (0.9 - seed * 0.01).toFixed(3),
+            (0.6 - seed * 0.01).toFixed(3),
+            (0.3 - seed * 0.008).toFixed(3),
+            (0.15 - seed * 0.005).toFixed(3),
+            (0.08 - seed * 0.003).toFixed(3),
+            (0.04 - seed * 0.002).toFixed(3)
           ].join(",");
         })
       )
@@ -453,6 +461,14 @@ describe("repository funding model", () => {
     expect(afterAnalysis.session.importReadiness.status).toBe("ready");
     expect(afterAnalysis.session.projectionProvider).toBe("Official Bracket + Metrics Feed");
     expect(afterAnalysis.session.activeDataSource.name).toBe("Session-managed imports");
+    expect(afterAnalysis.session.analysisImport?.teams[0].nateSilverProjection?.roundOf32).toBe(0.89);
+    expect(afterAnalysis.session.baseProjections[0]?.nateSilverProjection?.roundOf32).toBe(0.89);
+
+    const reloadedRepository = await loadRepository();
+    const reloadedSession = await reloadedRepository.getSession(session.id);
+
+    expect(reloadedSession?.analysisImport?.teams[0].nateSilverProjection?.roundOf32).toBe(0.89);
+    expect(reloadedSession?.baseProjections[0]?.nateSilverProjection?.roundOf32).toBe(0.89);
   });
 
   it("allows nominating a 13-16 bundle asset after session-managed imports", async () => {

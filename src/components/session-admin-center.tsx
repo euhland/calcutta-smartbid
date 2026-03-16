@@ -16,6 +16,7 @@ import {
 import { accessImportSampleCsv } from "@/lib/access-import";
 import { deriveMothershipFundingSnapshot } from "@/lib/funding";
 import { useFeedbackMessage } from "@/lib/hooks/use-feedback-message";
+import { readErrorMessage } from "@/lib/http-client";
 import {
   BudgetConfidence,
   DataSource,
@@ -319,8 +320,7 @@ export function SessionAdminCenter({
       cache: "no-store"
     });
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Unable to refresh session settings.");
+      throw new Error(await readErrorMessage(response, "Unable to refresh session settings."));
     }
     const payload = (await response.json()) as SessionAdminConfig;
     setConfig(payload);
@@ -382,8 +382,7 @@ export function SessionAdminCenter({
     });
 
     if (!response.ok) {
-      const payload = (await response.json()) as { error?: string };
-      throw new Error(payload.error ?? "Request failed.");
+      throw new Error(await readErrorMessage(response, "Request failed."));
     }
 
     const payload = (await response.json()) as SessionAdminConfig | null;
@@ -806,8 +805,7 @@ export function SessionAdminCenter({
         );
 
         if (!response.ok) {
-          const payload = (await response.json()) as { error?: string };
-          throw new Error(payload.error ?? "Unable to archive session.");
+          throw new Error(await readErrorMessage(response, "Unable to archive session."));
         }
 
         await refreshConfig();
@@ -836,8 +834,7 @@ export function SessionAdminCenter({
         );
 
         if (!response.ok) {
-          const payload = (await response.json()) as { error?: string };
-          throw new Error(payload.error ?? "Unable to delete session.");
+          throw new Error(await readErrorMessage(response, "Unable to delete session."));
         }
 
         router.push("/admin");
